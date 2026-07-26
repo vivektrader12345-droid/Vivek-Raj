@@ -1,0 +1,34 @@
+// Firestore Security Rules
+// Users can ONLY read/write their own data
+// Deploy: Firebase Console → Firestore → Rules → Paste & Publish
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // User's main document (profile)
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // All subcollections under a user (trades, strategies, alerts, watchlist, journal)
+      match /{subcollection}/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // Nested data collection (settings)
+      match /data/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // OTP collection (used during signup verification)
+    match /otps/{email} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Block everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

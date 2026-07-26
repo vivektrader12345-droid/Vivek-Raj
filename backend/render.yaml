@@ -1,0 +1,22 @@
+# Render.com deployment config (FREE tier)
+# Push this backend folder to a GitHub repo, then connect to Render
+
+services:
+  - type: web
+    name: vivek-crypto-trader-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: BINANCE_API_KEY
+        sync: false
+      - key: BINANCE_API_SECRET
+        sync: false
+      - key: AUTO_TRADE_ENABLED
+        value: "false"
+      - key: USE_TESTNET
+        value: "true"
+      - key: DEFAULT_TRADE_AMOUNT_USDT
+        value: "10"
+      - key: DEFAULT_LEVERAGE
+        value: "1"
