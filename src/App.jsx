@@ -17,6 +17,7 @@ import Settings from './pages/Settings'
 import Alerts from './pages/Alerts'
 import Calendar from './pages/Calendar'
 import AlgoTrading from './pages/AlgoTrading'
+import WebhookIntelligence from './pages/WebhookIntelligence'
 import ProTrading from './trading/ProTrading'
 import Layout from './components/Layout'
 
@@ -66,6 +67,7 @@ function App() {
                 <Route path="alerts" element={<Alerts />} />
                 <Route path="calendar" element={<Calendar />} />
                 <Route path="algo-trading" element={<AlgoTrading />} />
+                <Route path="webhook-intelligence" element={<WebhookIntelligence />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
               <Route path="*" element={<Navigate to="/" />} />

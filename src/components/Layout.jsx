@@ -6,7 +6,8 @@ import { useTheme } from '../context/ThemeContext'
 import { useCurrency } from '../context/CurrencyContext'
 import {
   LayoutDashboard, PlusCircle, History, BarChart3, Briefcase,
-  LogOut, Menu, X, Settings, Bell, ChevronLeft, CalendarDays, Sun, Moon, Bot, LineChart as LineChartIcon
+  LogOut, Menu, X, Settings, Bell, ChevronLeft, CalendarDays, Sun, Moon, Bot,
+  LineChart as LineChartIcon, RadioTower
 } from 'lucide-react'
 
 function Layout() {
@@ -32,6 +33,7 @@ function Layout() {
     { to: '/analytics', icon: BarChart3, label: 'Analytics' },
     { to: '/calendar', icon: CalendarDays, label: 'Calendar' },
     { to: '/algo-trading', icon: Bot, label: 'Algo Trading' },
+    { to: '/webhook-intelligence', icon: RadioTower, label: 'Webhook Intelligence' },
     { to: '/pro-trading', icon: LineChartIcon, label: '⚡ Pro Trading' },
     { to: '/portfolio', icon: Briefcase, label: 'Portfolio' },
     { to: '/alerts', icon: Bell, label: 'Alerts', badge: activeAlerts },
