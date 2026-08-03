@@ -1,10 +1,32 @@
+import { signOut } from 'firebase/auth'
 import { auth } from '../firebase'
+import {
+  AuthenticatedFetchError,
+  createFirebaseAuthenticatedFetch,
+  shouldSignOutForAuthenticationError,
+} from './firebaseAuthenticatedFetch'
+import { resolveWebhookApiBaseUrl } from './webhookApiConfig'
 
-const localHost = ['localhost', '127.0.0.1'].includes(globalThis.location?.hostname)
-const fallbackBase = localHost ? 'http://localhost:5000' : 'https://vivek-raj.onrender.com'
-const configuredBase = import.meta.env.VITE_WEBHOOK_API_URL || fallbackBase
-export const WEBHOOK_API_BASE_URL = configuredBase.replace(/\/+$/, '')
+export const WEBHOOK_API_BASE_URL = resolveWebhookApiBaseUrl({
+  configuredBase: import.meta.env?.VITE_WEBHOOK_API_URL,
+})
 export const DEFAULT_TIMEOUT_MS = 15000
+
+const authenticatedFetch = createFirebaseAuthenticatedFetch({
+  auth,
+  reauthenticate: async ({ user, code }) => {
+    // Ambiguous invalid/expired responses can be caused by a mixed deployment
+    // or backend configuration issue. Keep access blocked, but only destroy the
+    // Firebase session when the backend definitively reports revocation/disable.
+    if (
+      shouldSignOutForAuthenticationError(code)
+      && auth.currentUser === user
+      && auth.currentUser?.uid === user.uid
+    ) {
+      await signOut(auth)
+    }
+  },
+})
 
 export class WebhookApiError extends Error {
   constructor(message, {
@@ -101,48 +123,51 @@ async function parseJsonResponse(response) {
   }
 }
 
+function authenticatedErrorMessage(error, timeout) {
+  switch (error.code) {
+    case 'authentication_required':
+      return 'Sign in is required to access webhook intelligence.'
+    case 'token_acquisition_failed':
+      return 'Unable to obtain your authentication token.'
+    case 'token_refresh_failed':
+      return 'Unable to refresh your authentication token. Sign in again.'
+    case 'token_revoked':
+    case 'user_disabled':
+    case 'invalid_token':
+    case 'reauthentication_required':
+      return error.message || 'Your session is no longer valid. Sign in again.'
+    case 'request_timeout':
+      return `The webhook intelligence server at ${WEBHOOK_API_BASE_URL} did not respond within ${Math.round(timeout / 1000)} seconds.`
+    case 'network_error':
+      return `Unable to reach the webhook intelligence server at ${WEBHOOK_API_BASE_URL}. Verify that the configured backend is deployed and running.`
+    default:
+      return error.message || 'The webhook intelligence request failed.'
+  }
+}
+
 export async function webhookRequest(path, {
   method = 'GET',
   query,
   body,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) {
-  const currentUser = auth.currentUser
-  if (!currentUser) {
-    throw new WebhookApiError('Sign in is required to access webhook intelligence.', {
-      code: 'authentication_required',
-      status: 401,
-    })
-  }
-
-  let token
-  try {
-    token = await currentUser.getIdToken()
-  } catch (cause) {
-    throw new WebhookApiError('Unable to refresh your authentication token.', {
-      code: 'token_refresh_failed',
-      status: 401,
-      cause,
-    })
-  }
-
   const timeout = Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
     ? Number(timeoutMs)
     : DEFAULT_TIMEOUT_MS
-  const controller = new AbortController()
-  const timeoutId = globalThis.setTimeout(() => controller.abort(), timeout)
 
   try {
-    const response = await fetch(`${WEBHOOK_API_BASE_URL}${path}${buildQuery(query)}`, {
-      method,
-      signal: controller.signal,
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    const response = await authenticatedFetch(
+      `${WEBHOOK_API_BASE_URL}${path}${buildQuery(query)}`,
+      {
+        method,
+        headers: {
+          Accept: 'application/json',
+          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    })
+      { timeoutMs: timeout },
+    )
     const payload = await parseJsonResponse(response)
 
     if (!response.ok) {
@@ -170,26 +195,21 @@ export async function webhookRequest(path, {
   } catch (error) {
     if (error instanceof WebhookApiError) throw error
 
-    if (error?.name === 'AbortError') {
-      throw new WebhookApiError(
-        `The webhook intelligence server at ${WEBHOOK_API_BASE_URL} did not respond within ${Math.round(timeout / 1000)} seconds.`,
-        {
-          code: 'request_timeout',
-          status: 408,
-          cause: error,
-        },
-      )
+    if (error instanceof AuthenticatedFetchError) {
+      throw new WebhookApiError(authenticatedErrorMessage(error, timeout), {
+        code: error.code,
+        status: error.status,
+        details: error.details,
+        requestId: error.requestId,
+        payload: error.payload,
+        cause: error.cause,
+      })
     }
 
-    throw new WebhookApiError(
-      `Unable to reach the webhook intelligence server at ${WEBHOOK_API_BASE_URL}. Verify that the Render backend is deployed and running.`,
-      {
-        code: 'network_error',
-        cause: error,
-      },
-    )
-  } finally {
-    globalThis.clearTimeout(timeoutId)
+    throw new WebhookApiError('Unable to prepare the webhook intelligence request.', {
+      code: 'request_failed',
+      cause: error,
+    })
   }
 }
 
@@ -202,6 +222,7 @@ const events = (query, options = {}) => webhookRequest(`${apiRoot}/events`, { ..
 const eventDetail = (eventId, options) => webhookRequest(`${apiRoot}/events/${pathId(eventId, 'eventId')}`, options)
 const errors = (query, options = {}) => webhookRequest(`${apiRoot}/errors`, { ...options, query })
 const executions = (query, options = {}) => webhookRequest(`${apiRoot}/executions`, { ...options, query })
+const trades = (query, options = {}) => webhookRequest(`${apiRoot}/trades`, { ...options, query })
 const createEndpoint = (data, options = {}) => webhookRequest(`${apiRoot}/endpoints`, { ...options, method: 'POST', body: data })
 const updateEndpoint = (endpointId, data, options = {}) => webhookRequest(`${apiRoot}/endpoints/${pathId(endpointId, 'endpointId')}`, { ...options, method: 'PATCH', body: data })
 const rotateEndpointSecret = (endpointId, options = {}) => webhookRequest(`${apiRoot}/endpoints/${pathId(endpointId, 'endpointId')}/rotate-secret`, { ...options, method: 'POST' })
@@ -224,6 +245,8 @@ export const webhookIntelligenceService = {
   listErrors: errors,
   executions,
   listExecutions: executions,
+  trades,
+  listTrades: trades,
   createEndpoint,
   updateEndpoint,
   rotateEndpointSecret,

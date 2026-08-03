@@ -6,6 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "node --test tests/firebaseAuthenticatedFetch.test.js tests/webhookApiConfig.test.js",
+    "test:geometry:exploration": "node --test tests/geometry/terminalGeometry.exploration.test.js",
+    "test:preservation": "node --test tests/preservation/preservation.characterization.test.js",
+    "test:terminal:styles": "node --test tests/terminal/scopedTerminal.test.js",
+    "test:terminal:header": "node --test tests/terminal/terminalHeader.test.js",
+    "test:terminal:portals": "node --test tests/terminal/portalPrimitives.test.js",
+    "test:terminal:paper-quote": "node --test tests/terminal/paperQuoteFlow.test.js",
+    "test:terminal:hud-safe-zones": "node --test tests/terminal/chartHudSafeZones.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

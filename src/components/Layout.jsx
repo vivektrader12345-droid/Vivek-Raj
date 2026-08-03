@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useAlerts } from '../context/AlertContext'
 import { useTheme } from '../context/ThemeContext'
 import { useCurrency } from '../context/CurrencyContext'
+import ErrorBoundary from './ErrorBoundary'
 import {
   LayoutDashboard, PlusCircle, History, BarChart3, Briefcase,
   LogOut, Menu, X, Settings, Bell, ChevronLeft, CalendarDays, Sun, Moon, Bot,
@@ -167,7 +168,9 @@ function Layout() {
           </button>
           <span className="text-gray-500 text-xs">1 USD = ₹{exchangeRate.toFixed(2)}</span>
         </div>
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>
   )

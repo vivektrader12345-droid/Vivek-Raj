@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head><title>Generate Icons</title></head>
+<body>
+<h2>Click buttons below to download icons</h2>
+<canvas id="c16" width="16" height="16" hidden></canvas>
+<canvas id="c48" width="48" height="48" hidden></canvas>
+<canvas id="c128" width="128" height="128" hidden></canvas>
+<button onclick="generate(16)">Download icon16.png</button><br><br>
+<button onclick="generate(48)">Download icon48.png</button><br><br>
+<button onclick="generate(128)">Download icon128.png</button>
+<script>
+function generate(size) {
+  const canvas = document.getElementById('c' + size);
+  const ctx = canvas.getContext('2d');
+  // Background gradient
+  const grad = ctx.createLinearGradient(0, 0, size, size);
+  grad.addColorStop(0, '#e94560');
+  grad.addColorStop(1, '#f5a623');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.roundRect(0, 0, size, size, size * 0.2);
+  ctx.fill();
+  // Bull emoji text
+  ctx.font = `${size * 0.6}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🐂', size/2, size/2 + size*0.05);
+  // Download
+  const link = document.createElement('a');
+  link.download = `icon${size}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+</script>
+</body>
+</html>

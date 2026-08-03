@@ -28,6 +28,9 @@ export function AlertProvider({ children }) {
         createdAt: a.createdAt?.toDate?.() ? a.createdAt.toDate().toISOString() : a.createdAt,
       }))
       setAlerts(formatted)
+    }, (error) => {
+      console.error('Alert subscription error:', error)
+      // Don't crash — just leave alerts empty
     })
     return () => unsubscribe()
   }, [user])

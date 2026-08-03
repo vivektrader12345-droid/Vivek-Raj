@@ -1,0 +1,40 @@
+{
+  "property": "Property 2: Preservation — Paper Trading and Journal Behavior",
+  "validates": ["1.1", "1.2", "1.3", "1.4", "1.5", "9.4", "9.5", "9.6", "9.7", "10.5", "10.8", "10.9", "11.7", "11.8", "11.12"],
+  "observationBaseline": "unfixed-product-before-terminal-layout-fix",
+  "paperStore": {
+    "storageKey": "pro-trading-store",
+    "persistedSubset": ["account", "pendingOrders", "positions", "trades"],
+    "transitions": ["market", "limit", "stop", "cancel", "modify", "fees", "margin", "mark-price", "unrealized-pnl", "stop-loss", "take-profit", "liquidation", "partial-close", "reverse", "close-all", "reset", "pending-fill", "rehydration"]
+  },
+  "binance": {
+    "rest": "https://api.binance.com/api/v3/klines",
+    "websocket": "wss://stream.binance.com:9443/ws/{lowercase-symbol}@kline_{interval}",
+    "candleTime": "finite epoch seconds",
+    "ownership": "one module-global public WebSocket; reconnect after 3000ms; explicit disconnect suppresses reconnect"
+  },
+  "chart": {
+    "engine": "lightweight-charts",
+    "version": "4.1.1",
+    "contracts": ["history", "live-update", "candles", "wicks", "volume", "grid", "crosshair", "price-line", "last-value-label", "time-scale", "price-scale", "markers", "order-lines", "risk-reward", "wheel-zoom", "pointer-pan", "axis-drag", "double-click-reset", "auto-scale", "fullscreen", "resize", "screenshot", "destroy-cleanup"],
+    "crosshairMode": "CrosshairMode.Normal (numeric 0 in lightweight-charts 4.1.1; Hidden is 2)"
+  },
+  "journalBridge": {
+    "mountedWriters": 1,
+    "baseline": "current persisted trade count at mount",
+    "reset": "lower count resets baseline",
+    "append": "count advances before writes and every appended trade is processed",
+    "identity": "pro_${closedTrade.id}",
+    "source": "pro_trading",
+    "ownership": "authenticated UID is applied by the addTrade boundary",
+    "retry": "deterministic identity permits an idempotent boundary to return one document across retries"
+  },
+  "adjacentProduct": {
+    "dashboard": "TradeContext useTrades",
+    "history": "TradeContext useTrades",
+    "manualEntry": "TradeContext addTrade/updateTrade/getTradeById",
+    "authentication": "Firebase Auth AuthContext",
+    "settings": "AuthContext profile/settings methods",
+    "unrelatedStorage": "paper reset and rehydration preserve unrelated keys"
+  }
+}

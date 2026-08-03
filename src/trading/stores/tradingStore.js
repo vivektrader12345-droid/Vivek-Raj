@@ -8,10 +8,35 @@ import {
   OrderSide, OrderType, OrderStatus, PositionStatus, CloseReason,
   createOrder, createPositionFromOrder, createTradeFromPosition,
   calculatePnL, calculateROI, calculateRisk, calculateRiskPercent,
-  calculateReward, calculateRewardPercent,
+  calculateReward, calculateRewardPercent, calculateProtectionMetrics,
+  createDefaultProtection,
 } from '../types'
 
 const INITIAL_BALANCE = 100000
+
+function withProtectionMetrics(position, initializeMissing = false) {
+  let stopLoss = position.stopLoss
+  let takeProfit = position.takeProfit
+  if (initializeMissing && !position.protectionInitialized) {
+    const defaults = createDefaultProtection(position.entryPrice, position.side)
+    stopLoss = stopLoss || defaults.stopLoss
+    takeProfit = takeProfit || defaults.takeProfit
+  }
+  return {
+    ...position,
+    stopLoss: stopLoss || null,
+    takeProfit: takeProfit || null,
+    protectionInitialized: true,
+    ...calculateProtectionMetrics(position, stopLoss, takeProfit),
+  }
+}
+
+function withLiveMetrics(position, currentPrice) {
+  const protectedPosition = withProtectionMetrics(position)
+  const mark = Number(currentPrice) || protectedPosition.currentPrice || protectedPosition.entryPrice
+  const unrealizedPnl = calculatePnL(protectedPosition.side, protectedPosition.entryPrice, mark, protectedPosition.qty, protectedPosition.leverage)
+  return { ...protectedPosition, currentPrice: mark, markPrice: mark, unrealizedPnl, roi: calculateROI(unrealizedPnl, protectedPosition.margin) }
+}
 
 const useTradingStore = create(
   persist(
@@ -47,12 +72,15 @@ const useTradingStore = create(
         
         if (!orderPrice || orderPrice <= 0) return { success: false, error: 'Invalid price' }
 
+        const defaults = createDefaultProtection(orderPrice, side)
+        const resolvedStopLoss = Number(stopLoss) > 0 ? Number(stopLoss) : defaults.stopLoss
+        const resolvedTakeProfit = Number(takeProfit) > 0 ? Number(takeProfit) : defaults.takeProfit
         const order = createOrder({
           symbol, side, type, qty,
           price: orderPrice,
           leverage,
-          stopLoss: stopLoss || null,
-          takeProfit: takeProfit || null,
+          stopLoss: resolvedStopLoss,
+          takeProfit: resolvedTakeProfit,
           limitPrice: type !== OrderType.MARKET ? orderPrice : null,
         })
 
@@ -62,8 +90,8 @@ const useTradingStore = create(
         }
 
         if (type === OrderType.MARKET) {
-          // Execute immediately - create position
-          const position = createPositionFromOrder(order)
+          // Execute immediately - create position with chart protection ready.
+          const position = withProtectionMetrics(createPositionFromOrder(order), true)
           set(s => ({
             positions: [...s.positions, position],
             account: {
@@ -180,7 +208,7 @@ const useTradingStore = create(
           return {
             positions: s.positions.map(p =>
               p.id === positionId
-                ? { ...p, qty: p.qty - closeQty, margin: p.margin - closedMargin }
+                ? withProtectionMetrics({ ...p, qty: p.qty - closeQty, margin: p.margin - closedMargin })
                 : p
             ),
             trades: [...s.trades, trade],
@@ -225,25 +253,45 @@ const useTradingStore = create(
         })
       },
 
-      /**
-       * Modify stop loss for a position
-       */
-      modifyStopLoss: (positionId, newSL) => {
+      /** Atomically update entry/TP/SL so chart dragging produces one render. */
+      modifyPositionProtection: (positionId, changes) => {
         set(s => ({
-          positions: s.positions.map(p =>
-            p.id === positionId ? { ...p, stopLoss: newSL } : p
-          ),
+          positions: s.positions.map(position => position.id === positionId
+            ? withLiveMetrics({ ...position, ...changes, updatedAt: Date.now() }, s.currentPrice)
+            : position),
         }))
       },
 
-      /**
-       * Modify take profit for a position
-       */
-      modifyTakeProfit: (positionId, newTP) => {
+      /** Update the paper position entry anchor from the chart tool. */
+      modifyEntryPrice: (positionId, newEntry) => {
+        const price = Number(newEntry)
+        if (!Number.isFinite(price) || price <= 0) return
         set(s => ({
-          positions: s.positions.map(p =>
-            p.id === positionId ? { ...p, takeProfit: newTP } : p
-          ),
+          positions: s.positions.map(position => position.id === positionId
+            ? withLiveMetrics({ ...position, entryPrice: price, updatedAt: Date.now() }, s.currentPrice)
+            : position),
+        }))
+      },
+
+      /** Modify stop loss for a position. Null removes the line. */
+      modifyStopLoss: (positionId, newSL) => {
+        const price = newSL == null ? null : Number(newSL)
+        if (price !== null && (!Number.isFinite(price) || price <= 0)) return
+        set(s => ({
+          positions: s.positions.map(position => position.id === positionId
+            ? withProtectionMetrics({ ...position, stopLoss: price, updatedAt: Date.now() })
+            : position),
+        }))
+      },
+
+      /** Modify take profit for a position. Null removes the line. */
+      modifyTakeProfit: (positionId, newTP) => {
+        const price = newTP == null ? null : Number(newTP)
+        if (price !== null && (!Number.isFinite(price) || price <= 0)) return
+        set(s => ({
+          positions: s.positions.map(position => position.id === positionId
+            ? withProtectionMetrics({ ...position, takeProfit: price, updatedAt: Date.now() })
+            : position),
         }))
       },
 
@@ -253,7 +301,10 @@ const useTradingStore = create(
        */
       updatePrice: (price) => {
         const state = get()
-        if (price === state.currentPrice) return
+        if (price === state.currentPrice) {
+          set({ markPrice: price, lastTickTime: Date.now() })
+          return
+        }
 
         set({ currentPrice: price, markPrice: price, lastTickTime: Date.now() })
 
@@ -317,7 +368,7 @@ const useTradingStore = create(
           if (triggered) {
             // Fill the order
             const filledOrder = { ...order, status: OrderStatus.FILLED, filledQty: order.qty, filledAt: Date.now() }
-            const position = createPositionFromOrder(filledOrder)
+            const position = withProtectionMetrics(createPositionFromOrder(filledOrder), true)
 
             set(s => ({
               pendingOrders: s.pendingOrders.filter(o => o.id !== order.id),
@@ -412,6 +463,11 @@ const useTradingStore = create(
     }),
     {
       name: 'pro-trading-store',
+      version: 2,
+      migrate: persisted => ({
+        ...persisted,
+        positions: (persisted?.positions || []).map(position => withProtectionMetrics(position, true)),
+      }),
       partialize: (state) => ({
         positions: state.positions,
         pendingOrders: state.pendingOrders,

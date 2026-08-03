@@ -6,6 +6,7 @@ import { TradeProvider } from './context/TradeContext'
 import { AlertProvider } from './context/AlertContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { CurrencyProvider } from './context/CurrencyContext'
+import ErrorBoundary from './components/ErrorBoundary'
 import Signup from './pages/Signup'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -35,6 +36,7 @@ function PublicRoute({ children }) {
 
 function App() {
   return (
+    <ErrorBoundary>
     <ThemeProvider>
     <CurrencyProvider>
     <AuthProvider>
@@ -78,6 +80,7 @@ function App() {
     </AuthProvider>
     </CurrencyProvider>
     </ThemeProvider>
+    </ErrorBoundary>
   )
 }
 

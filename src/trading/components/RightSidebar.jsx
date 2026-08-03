@@ -168,6 +168,18 @@ function PositionsTab({ positions }) {
                 </div>
               )}
               <div className="flex justify-between">
+                <span className="text-gray-500">Expected +</span>
+                <span className="text-[#4caf50]">+${Number(pos.expectedProfit || 0).toFixed(2)} ({Number(pos.profitPercent || 0).toFixed(2)}%)</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Expected -</span>
+                <span className="text-[#ff4976]">-${Number(pos.expectedLoss || 0).toFixed(2)} ({Number(pos.lossPercent || 0).toFixed(2)}%)</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Risk : Reward</span>
+                <span className="text-cyan-400">1:{Number(pos.riskRewardRatio || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-gray-500">Fee</span>
                 <span className="text-gray-300">-${pos.totalFees.toFixed(2)}</span>
               </div>

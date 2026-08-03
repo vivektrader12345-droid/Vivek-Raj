@@ -302,6 +302,47 @@ export function calculateRewardPercent(reward, margin) {
   return (reward / margin) * 100
 }
 
+export const DEFAULT_STOP_LOSS_PERCENT = 1
+export const DEFAULT_TAKE_PROFIT_PERCENT = 2
+
+/**
+ * Return sensible initial protection prices for a newly opened position.
+ * Explicitly deleted protection remains deleted; these defaults are only used
+ * while creating or migrating a position.
+ */
+export function createDefaultProtection(entryPrice, side, stopPercent = DEFAULT_STOP_LOSS_PERCENT, takeProfitPercent = DEFAULT_TAKE_PROFIT_PERCENT) {
+  const entry = Number(entryPrice)
+  if (!Number.isFinite(entry) || entry <= 0) return { stopLoss: null, takeProfit: null }
+  const direction = side === OrderSide.BUY ? 1 : -1
+  const normalize = value => Number(value.toPrecision(12))
+  return {
+    stopLoss: normalize(entry * (1 - direction * Math.abs(stopPercent) / 100)),
+    takeProfit: normalize(entry * (1 + direction * Math.abs(takeProfitPercent) / 100)),
+  }
+}
+
+/**
+ * Shared live TP/SL metrics used by chart labels and position panels.
+ */
+export function calculateProtectionMetrics(position, stopLoss = position?.stopLoss, takeProfit = position?.takeProfit) {
+  if (!position) return { expectedProfit: 0, expectedLoss: 0, profitPercent: 0, lossPercent: 0, riskRewardRatio: 0 }
+  const entry = Number(position.entryPrice) || 0
+  const stop = Number(stopLoss) || 0
+  const target = Number(takeProfit) || 0
+  const direction = position.side === OrderSide.BUY ? 1 : -1
+  const expectedProfit = target ? calculateReward(position.side, entry, target, position.qty, position.leverage) : 0
+  const expectedLoss = stop ? calculateRisk(position.side, entry, stop, position.qty, position.leverage) : 0
+  const profitPercent = entry && target ? Math.max(0, direction * ((target - entry) / entry) * 100) : 0
+  const lossPercent = entry && stop ? Math.max(0, -direction * ((stop - entry) / entry) * 100) : 0
+  return {
+    expectedProfit,
+    expectedLoss,
+    profitPercent,
+    lossPercent,
+    riskRewardRatio: expectedLoss > 0 ? expectedProfit / expectedLoss : 0,
+  }
+}
+
 /**
  * Format duration from milliseconds to human-readable
  * @param {number} ms

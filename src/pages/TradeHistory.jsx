@@ -4,12 +4,14 @@ import { useTrades } from '../context/TradeContext'
 import { History, Trash2, Search, Edit3, ArrowUpRight, ArrowDownRight, Download, Trash, Eye } from 'lucide-react'
 import CustomSelect from '../components/CustomSelect'
 import { useCurrency } from '../context/CurrencyContext'
+import CSVImport from '../components/CSVImport'
 import toast from 'react-hot-toast'
 
 function TradeHistory() {
   const { trades, deleteTrade, deleteAllTrades } = useTrades()
   const { formatAmount, symbol } = useCurrency()
   const [searchTerm, setSearchTerm] = useState('')
+  const [showImportCSV, setShowImportCSV] = useState(false)
   const [filterType, setFilterType] = useState('all')
   const [filterResult, setFilterResult] = useState('all')
   const [filterStrategy, setFilterStrategy] = useState('all')
@@ -109,6 +111,10 @@ function TradeHistory() {
           <p className="text-gray-400 mt-1 text-sm">View and manage all your trades</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => setShowImportCSV(!showImportCSV)}
+            className="flex items-center gap-2 px-4 py-2 bg-[#e94560]/20 text-[#e94560] rounded-lg hover:bg-[#e94560]/30 transition-all text-sm border border-[#e94560]/30">
+            📊 Import CSV
+          </button>
           {trades.length > 0 && (
             <>
               <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 bg-[#0f3460] text-white rounded-lg hover:bg-[#0f3460]/80 transition-all text-sm">
@@ -121,6 +127,13 @@ function TradeHistory() {
           )}
         </div>
       </div>
+
+      {/* CSV Import */}
+      {showImportCSV && (
+        <div className="glass-card p-5">
+          <CSVImport onComplete={() => setShowImportCSV(false)} />
+        </div>
+      )}
 
       {/* Delete All Confirmation */}
       {showDeleteAllConfirm && (

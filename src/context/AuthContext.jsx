@@ -32,6 +32,32 @@ import {
 
 const AuthContext = createContext(null)
 
+function LoadingScreen() {
+  const [showHelp, setShowHelp] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowHelp(true), 5000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  return (
+    <div className="min-h-screen bg-[#060612] flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 border-2 border-[#e94560] border-t-transparent rounded-full animate-spin" />
+        <span className="text-gray-400 text-sm">Loading...</span>
+        {showHelp && (
+          <div className="mt-4 text-center max-w-xs">
+            <p className="text-yellow-400 text-xs">Taking longer than expected...</p>
+            <p className="text-gray-500 text-xs mt-1">
+              Check your internet connection or try refreshing the page.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [userSettings, setUserSettings] = useState(null)
@@ -42,75 +68,94 @@ export function AuthProvider({ children }) {
 
   // Listen to Firebase auth state changes
   useEffect(() => {
+    // Safety timeout — if Firestore hangs for >8s, stop loading anyway
+    const safetyTimer = setTimeout(() => {
+      setLoading(false)
+    }, 8000)
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      clearTimeout(safetyTimer)
+
       // If OTP flow is active, don't auto-login
       if (blockAutoLogin) {
         setLoading(false)
         return
       }
 
-      if (firebaseUser) {
-        const isGoogleUser = firebaseUser.providerData.some(p => p.providerId === 'google.com')
+      try {
+        if (firebaseUser) {
+          const isGoogleUser = firebaseUser.providerData.some(p => p.providerId === 'google.com')
 
-        // Load user profile from Firestore
-        const profile = await getProfile(firebaseUser.uid)
+          // Load user profile from Firestore
+          const profile = await getProfile(firebaseUser.uid)
 
-        if (profile) {
-          // Check verification (Google users always verified)
-          const isVerified = isGoogleUser || firebaseUser.emailVerified || profile.emailVerified === true
+          if (profile) {
+            // Check verification (Google users always verified)
+            const isVerified = isGoogleUser || firebaseUser.emailVerified || profile.emailVerified === true
 
-          if (!isVerified) {
-            setNeedsVerification(true)
-            setVerificationEmail(firebaseUser.email)
-            setUser(null)
-            setLoading(false)
-            return
+            if (!isVerified) {
+              setNeedsVerification(true)
+              setVerificationEmail(firebaseUser.email)
+              setUser(null)
+              setLoading(false)
+              return
+            }
+
+            // Load settings
+            const settings = await getSettings(firebaseUser.uid)
+            setUserSettings(settings)
+            setNeedsVerification(false)
+            setVerificationEmail('')
+            setUser({
+              ...profile,
+              id: firebaseUser.uid,
+              uid: firebaseUser.uid,
+              emailVerified: true,
+            })
+          } else {
+            // New user (Google sign-in first time) — create default data
+            const defaultProfile = {
+              fullName: firebaseUser.displayName || firebaseUser.email.split('@')[0],
+              email: firebaseUser.email,
+              avatar: (firebaseUser.displayName || firebaseUser.email || 'U').charAt(0).toUpperCase(),
+              photoURL: firebaseUser.photoURL || null,
+              emailVerified: isGoogleUser || firebaseUser.emailVerified,
+            }
+
+            await createDefaultUserData(firebaseUser.uid, defaultProfile)
+            const settings = await getSettings(firebaseUser.uid)
+            setUserSettings(settings)
+
+            if (!isGoogleUser && !firebaseUser.emailVerified) {
+              setNeedsVerification(true)
+              setVerificationEmail(firebaseUser.email)
+              setUser(null)
+            } else {
+              setNeedsVerification(false)
+              setUser({ id: firebaseUser.uid, uid: firebaseUser.uid, emailVerified: true, ...defaultProfile })
+            }
           }
-
-          // Load settings
-          const settings = await getSettings(firebaseUser.uid)
-          setUserSettings(settings)
+        } else {
+          // User signed out — clear everything
+          setUser(null)
+          setUserSettings(null)
           setNeedsVerification(false)
           setVerificationEmail('')
-          setUser({
-            id: firebaseUser.uid,
-            uid: firebaseUser.uid,
-            emailVerified: true,
-            ...profile,
-          })
-        } else {
-          // New user (Google sign-in first time) — create default data
-          const defaultProfile = {
-            fullName: firebaseUser.displayName || firebaseUser.email.split('@')[0],
-            email: firebaseUser.email,
-            avatar: (firebaseUser.displayName || firebaseUser.email || 'U').charAt(0).toUpperCase(),
-            photoURL: firebaseUser.photoURL || null,
-            emailVerified: isGoogleUser || firebaseUser.emailVerified,
-          }
-
-          await createDefaultUserData(firebaseUser.uid, defaultProfile)
-          const settings = await getSettings(firebaseUser.uid)
-          setUserSettings(settings)
-
-          if (!isGoogleUser && !firebaseUser.emailVerified) {
-            setNeedsVerification(true)
-            setVerificationEmail(firebaseUser.email)
-            setUser(null)
-          } else {
-            setNeedsVerification(false)
-            setUser({ id: firebaseUser.uid, uid: firebaseUser.uid, emailVerified: true, ...defaultProfile })
-          }
         }
-      } else {
-        // User signed out — clear everything
+      } catch (err) {
+        console.error('Auth state error:', err)
+        // On any Firestore error, clear user and let app continue
         setUser(null)
         setUserSettings(null)
-        setNeedsVerification(false)
-        setVerificationEmail('')
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     })
-    return () => unsubscribe()
+
+    return () => {
+      clearTimeout(safetyTimer)
+      unsubscribe()
+    }
   }, [blockAutoLogin])
 
   // ==================== AUTH ACTIONS ====================
@@ -153,7 +198,7 @@ export function AuthProvider({ children }) {
 
     const settings = await getSettings(credential.user.uid)
     setUserSettings(settings)
-    const userData = { id: credential.user.uid, uid: credential.user.uid, emailVerified: true, ...profile }
+    const userData = { ...profile, id: credential.user.uid, uid: credential.user.uid, emailVerified: true }
     setUser(userData)
     return userData
   }
@@ -178,7 +223,7 @@ export function AuthProvider({ children }) {
     const profile = await getProfile(credential.user.uid)
     const settings = await getSettings(credential.user.uid)
     setUserSettings(settings)
-    const userData = { id: credential.user.uid, uid: credential.user.uid, emailVerified: true, ...profile }
+    const userData = { ...profile, id: credential.user.uid, uid: credential.user.uid, emailVerified: true }
     setUser(userData)
     return userData
   }
@@ -203,7 +248,7 @@ export function AuthProvider({ children }) {
 
     const settings = await getSettings(firebaseUser.uid)
     setUserSettings(settings)
-    const userData = { id: firebaseUser.uid, uid: firebaseUser.uid, emailVerified: true, ...profile }
+    const userData = { ...profile, id: firebaseUser.uid, uid: firebaseUser.uid, emailVerified: true }
     setUser(userData)
     return userData
   }
@@ -257,23 +302,16 @@ export function AuthProvider({ children }) {
       const settings = await getSettings(currentUser.uid)
       setUserSettings(settings)
       if (profile) {
-        setUser({ id: currentUser.uid, uid: currentUser.uid, emailVerified: true, ...profile })
+        setUser({ ...profile, id: currentUser.uid, uid: currentUser.uid, emailVerified: true })
       }
       return true
     }
     return false
   }
 
-  // Loading screen
+  // Loading screen with timeout feedback
   if (loading) {
-    return (
-      <div className="min-h-screen bg-[#060612] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-2 border-[#e94560] border-t-transparent rounded-full animate-spin" />
-          <span className="text-gray-400 text-sm">Loading...</span>
-        </div>
-      </div>
-    )
+    return <LoadingScreen />
   }
 
   return (

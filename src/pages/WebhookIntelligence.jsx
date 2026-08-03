@@ -17,7 +17,7 @@ import {
   webhookIntelligenceService as api,
 } from '../services/webhookIntelligenceService'
 
-const TABS = ['Overview', 'Alert History', 'Analytics', 'Execution Logs', 'Endpoints', 'Notifications']
+const TABS = ['Overview', 'Alert History', 'Open Positions', 'Analytics', 'Execution Logs', 'Endpoints', 'Notifications']
 const inputClass = 'w-full rounded-lg border border-[#2a2a5a]/70 bg-[#09091a] px-3 py-2.5 text-sm text-gray-100 outline-none transition placeholder:text-gray-600 focus:border-[#e94560] focus:ring-1 focus:ring-[#e94560]/30'
 const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-lg border border-[#2a2a5a]/70 bg-[#15152d] px-3 py-2 text-sm font-medium text-gray-200 transition hover:border-[#e94560]/50 hover:text-white focus:outline-none focus:ring-2 focus:ring-[#e94560]/40 disabled:cursor-not-allowed disabled:opacity-50'
 const alertColumns = [
@@ -232,7 +232,30 @@ function History({ events, options, loadHistory, loading, refreshVersion }) {
   </div>
 }
 
-function Analytics({ overview, events }) {
+function OpenPositions({ positions }) {
+  const rows = array(positions)
+  const longCount = rows.filter(position => position.direction === 'long').length
+  const shortCount = rows.filter(position => position.direction === 'short').length
+  const notional = rows.reduce((sum, position) => sum + (numberValue(position.positionValue) || 0), 0)
+  const margin = rows.reduce((sum, position) => sum + (numberValue(position.margin) || 0), 0)
+  const cards = [
+    ['Open paper positions', rows.length, Activity, 'text-sky-400'],
+    ['Long / BUY', longCount, TrendingUp, 'text-emerald-400'],
+    ['Short / SELL', shortCount, TrendingDown, 'text-red-400'],
+    ['Position value', money(notional), BarChart3, 'text-purple-400'],
+    ['Margin used', money(margin), Gauge, 'text-amber-400'],
+  ]
+  return <div className="space-y-4">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">{cards.map(([label, value, icon, tone]) => <MetricCard key={label} label={label} value={value} icon={icon} tone={tone} />)}</div>
+    <Panel className="overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#2a2a5a]/60 p-4"><div><h2 className="text-sm font-semibold text-white">Open TradingView paper positions</h2><p className="mt-1 text-xs text-gray-500">BUY opens a long and SELL opens a short. Send exit_long or exit_short to close a position and record P&amp;L.</p></div><Badge status={rows.length ? 'active' : 'idle'}>{rows.length ? `${rows.length} Open` : 'No open positions'}</Badge></div>
+      {rows.length ? <Table minWidth="1180px"><Head labels={['Symbol', 'Direction', 'Strategy', 'Entry', 'Quantity', 'Leverage', 'Position value', 'Margin', 'Stop loss', 'Take profit', 'Opened', 'Trade ID']} /><tbody>{rows.map(position => <tr key={position.id} className="border-b border-[#242440]/50"><td className="px-3 py-3 font-semibold text-gray-200">{position.symbol || 'Unknown'}</td><td className="px-3 py-3"><Badge status={position.side}>{titleCase(position.direction || position.side)}</Badge></td><td className="px-3 py-3 text-gray-300">{position.strategy || 'Unspecified'}</td><td className="px-3 py-3 text-gray-300">{money(position.entryPrice)}</td><td className="px-3 py-3 text-gray-400">{number(position.quantity)}</td><td className="px-3 py-3 text-gray-400">{number(position.leverage)}×</td><td className="px-3 py-3 text-gray-300">{money(position.positionValue)}</td><td className="px-3 py-3 text-gray-400">{money(position.margin)}</td><td className="px-3 py-3 text-gray-400">{number(position.stopLoss)}</td><td className="px-3 py-3 text-gray-400">{number(position.takeProfit)}</td><td className="whitespace-nowrap px-3 py-3 text-xs text-gray-500">{time(position.openedAt)}</td><td className="max-w-48 break-all px-3 py-3 font-mono text-[10px] text-gray-600">{position.id || 'N/A'}</td></tr>)}</tbody></Table> : <Empty title="No open paper positions" detail="When an executed BUY or SELL webhook is received, the position will appear here automatically." />}
+    </Panel>
+    <p className="text-xs text-gray-600">Prices are the values supplied by TradingView when the entry webhook fired. Unrealized P&amp;L requires a live market-price feed and is not calculated here.</p>
+  </div>
+}
+
+function Analytics({ overview, events, positions, onViewPositions }) {
   const trade = record(overview.tradeMetrics)
   const aggregates = record(overview.aggregates)
   const pnlEvents = events.filter(event => eventPnl(event) !== null)
@@ -249,6 +272,7 @@ function Analytics({ overview, events }) {
     ['Longest win streak', number(trade.longestWinStreak), TrendingUp], ['Longest loss streak', number(trade.longestLossStreak), TrendingDown], ['Average RR', 'N/A', Gauge],
   ]
   return <div className="space-y-5">
+    {array(positions).length > 0 && <Panel className="flex flex-wrap items-center justify-between gap-4 border-sky-500/25 bg-sky-500/5 p-4"><div className="flex items-start gap-3"><Activity className="mt-0.5 shrink-0 text-sky-400" size={20} /><div><p className="text-sm font-semibold text-sky-100">{array(positions).length} paper position{array(positions).length === 1 ? '' : 's'} currently open</p><p className="mt-1 text-xs text-gray-500">The BUY/SELL webhook was executed. Closed-trade analytics will update after an exit_long or exit_short signal.</p></div></div><button className={buttonClass} onClick={onViewPositions}>View Open Positions</button></Panel>}
     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">{cards.map(([label, value, icon]) => <MetricCard key={label} label={label} value={numberValue(value) !== null ? number(value) : value} icon={icon} tone={label.includes('Loss') || label.includes('drawdown') ? 'text-red-400' : label.includes('Win') || label.includes('profit') ? 'text-emerald-400' : 'text-sky-400'} />)}</div>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Best loaded P&L" value={ranked.length ? `${ranked[0].symbol || 'Unknown'} · ${money(eventPnl(ranked[0]))}` : 'N/A'} icon={TrendingUp} tone="text-emerald-400" hint="Only events with recorded P&L" /><MetricCard label="Worst loaded P&L" value={ranked.length ? `${ranked.at(-1).symbol || 'Unknown'} · ${money(eventPnl(ranked.at(-1)))}` : 'N/A'} icon={TrendingDown} tone="text-red-400" hint="Only events with recorded P&L" /><MetricCard label="Fastest execution" value={latencyEvents.length ? `${number(latencyEvents[0].executionLatencyMs)} ms` : 'N/A'} icon={Zap} tone="text-cyan-400" /><MetricCard label="Slowest execution" value={latencyEvents.length ? `${number(latencyEvents.at(-1).executionLatencyMs)} ms` : 'N/A'} icon={Clock3} tone="text-amber-400" /></div>
     <div className="grid gap-4 xl:grid-cols-2"><ChartPanel title="Strategy activity" data={strategies.slice(0, 15)} /><ChartPanel title="Symbol activity" data={symbols.slice(0, 15)} /></div>
@@ -373,7 +397,7 @@ function Notifications({ uid }) {
 export default function WebhookIntelligence() {
   const { user } = useAuth()
   const [tab, setTab] = useState('Overview')
-  const [data, setData] = useState({ overview: {}, health: {}, endpoints: [], events: [], errors: [], executions: [] })
+  const [data, setData] = useState({ overview: {}, health: {}, endpoints: [], events: [], errors: [], executions: [], positions: [] })
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
@@ -384,7 +408,7 @@ export default function WebhookIntelligence() {
     if (fetching.current || !user) return
     fetching.current = true
     if (!quiet) setRefreshing(true)
-    const requests = [api.overview(), api.endpoints(), api.events({ limit: 100 }), api.errors({ limit: 200 }), api.executions({ limit: 200 }), api.health()]
+    const requests = [api.overview(), api.endpoints(), api.events({ limit: 100 }), api.errors({ limit: 200 }), api.executions({ limit: 200 }), api.health(), api.trades({ status: 'open', limit: 200 })]
     try {
       const results = await Promise.allSettled(requests)
       const failed = results.filter(result => result.status === 'rejected')
@@ -396,6 +420,7 @@ export default function WebhookIntelligence() {
         errors: results[3].status === 'fulfilled' ? array(results[3].value.errors) : previous.errors,
         executions: results[4].status === 'fulfilled' ? array(results[4].value.executions) : previous.executions,
         health: results[5].status === 'fulfilled' ? record(results[5].value) : previous.health,
+        positions: results[6].status === 'fulfilled' ? array(results[6].value.trades) : previous.positions,
       }))
       setLastUpdated(new Date())
       setError(failed.length ? `${failed.length} data source${failed.length > 1 ? 's' : ''} could not refresh; showing available last-known data.` : '')
@@ -422,8 +447,8 @@ export default function WebhookIntelligence() {
     <div className="mx-auto max-w-[1700px] space-y-5">
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between"><div><div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[.18em] text-[#e94560]"><RadioTower size={15} /> TradingView operations</div><h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Webhook Intelligence</h1><p className="mt-2 max-w-2xl text-sm text-gray-500">Monitor validated alerts, paper execution, endpoint safety, and operational health from real server records.</p></div><div className="flex flex-wrap items-center gap-3"><div className="text-right text-xs text-gray-500"><p>{lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : 'Not updated yet'}</p><p className={stale ? 'text-amber-400' : 'text-emerald-400'}>{stale ? 'Stale data' : document.hidden ? 'Polling paused while hidden' : 'Auto-refresh · 10s'}</p></div><button className={buttonClass} disabled={refreshing} onClick={() => load()}>{refreshing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Refresh</button></div></header>
       {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200"><span className="flex items-center gap-2"><AlertTriangle size={18} />{error}</span><button className={buttonClass} onClick={() => load()}>Retry</button></div>}
-      <nav aria-label="Webhook intelligence sections" className="flex max-w-full gap-1 overflow-x-auto rounded-xl border border-[#242447] bg-[#0c0c1c] p-1">{TABS.map(name => <button key={name} aria-current={tab === name ? 'page' : undefined} onClick={() => setTab(name)} className={`whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[#e94560]/40 ${tab === name ? 'bg-[#e94560] text-white shadow-lg shadow-[#e94560]/15' : 'text-gray-500 hover:bg-white/[.04] hover:text-gray-200'}`}>{name}</button>)}</nav>
-      {loading && !lastUpdated ? <Skeleton /> : <main className="animate-fadeIn">{tab === 'Overview' && <Overview overview={data.overview} health={data.health} events={data.events} />}{tab === 'Alert History' && <History events={data.events} options={options} loadHistory={loadHistory} loading={loading} refreshVersion={lastUpdated?.getTime() || 0} />}{tab === 'Analytics' && <Analytics overview={data.overview} events={data.events} />}{tab === 'Execution Logs' && <Logs executions={data.executions} errors={data.errors} />}{tab === 'Endpoints' && <Endpoints endpoints={data.endpoints} refresh={() => load()} />}{tab === 'Notifications' && <Notifications uid={user?.uid || user?.id} />}</main>}
+      <nav aria-label="Webhook intelligence sections" className="flex max-w-full gap-1 overflow-x-auto rounded-xl border border-[#242447] bg-[#0c0c1c] p-1">{TABS.map(name => <button key={name} aria-current={tab === name ? 'page' : undefined} onClick={() => setTab(name)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[#e94560]/40 ${tab === name ? 'bg-[#e94560] text-white shadow-lg shadow-[#e94560]/15' : 'text-gray-500 hover:bg-white/[.04] hover:text-gray-200'}`}>{name}{name === 'Open Positions' && data.positions.length > 0 && <span className="rounded-full bg-sky-400/15 px-1.5 py-0.5 text-[10px] text-sky-300">{data.positions.length}</span>}</button>)}</nav>
+      {loading && !lastUpdated ? <Skeleton /> : <main className="animate-fadeIn">{tab === 'Overview' && <Overview overview={data.overview} health={data.health} events={data.events} />}{tab === 'Alert History' && <History events={data.events} options={options} loadHistory={loadHistory} loading={loading} refreshVersion={lastUpdated?.getTime() || 0} />}{tab === 'Open Positions' && <OpenPositions positions={data.positions} />}{tab === 'Analytics' && <Analytics overview={data.overview} events={data.events} positions={data.positions} onViewPositions={() => setTab('Open Positions')} />}{tab === 'Execution Logs' && <Logs executions={data.executions} errors={data.errors} />}{tab === 'Endpoints' && <Endpoints endpoints={data.endpoints} refresh={() => load()} />}{tab === 'Notifications' && <Notifications uid={user?.uid || user?.id} />}</main>}
     </div>
   </div>
 }

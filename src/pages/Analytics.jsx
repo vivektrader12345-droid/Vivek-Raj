@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react'
 import { useTrades } from '../context/TradeContext'
+import { useCurrency } from '../context/CurrencyContext'
 import { BarChart3, TrendingUp, Calendar, Target, Clock, Zap } from 'lucide-react'
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -8,6 +9,7 @@ import {
 
 function Analytics() {
   const { trades, getStats } = useTrades()
+  const { currency: currencyName, symbol: currSymbol, convert } = useCurrency()
   const stats = getStats()
 
   // Equity Curve
@@ -154,11 +156,11 @@ function Analytics() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="glass-card p-4 text-center">
           <p className="text-gray-400 text-xs uppercase tracking-wider">Best Trade</p>
-          <p className="text-emerald-400 text-xl font-bold mt-1">+${stats.largestWin}</p>
+          <p className="text-emerald-400 text-xl font-bold mt-1">+{currSymbol}{convert(stats.largestWin).toFixed(2)}</p>
         </div>
         <div className="glass-card p-4 text-center">
           <p className="text-gray-400 text-xs uppercase tracking-wider">Worst Trade</p>
-          <p className="text-red-400 text-xl font-bold mt-1">${stats.largestLoss}</p>
+          <p className="text-red-400 text-xl font-bold mt-1">{currSymbol}{convert(stats.largestLoss).toFixed(2)}</p>
         </div>
         <div className="glass-card p-4 text-center">
           <p className="text-gray-400 text-xs uppercase tracking-wider">Profit Factor</p>
@@ -166,7 +168,7 @@ function Analytics() {
         </div>
         <div className="glass-card p-4 text-center">
           <p className="text-gray-400 text-xs uppercase tracking-wider">Total Fees</p>
-          <p className="text-orange-400 text-xl font-bold mt-1">${stats.totalFees}</p>
+          <p className="text-orange-400 text-xl font-bold mt-1">{currSymbol}{convert(stats.totalFees).toFixed(2)}</p>
         </div>
       </div>
 
@@ -330,10 +332,10 @@ function Analytics() {
                   <td className="py-3 px-3 text-emerald-400">{s.wins}</td>
                   <td className="py-3 px-3 text-gray-300">{s.count > 0 ? ((s.wins / s.count) * 100).toFixed(0) : 0}%</td>
                   <td className={`py-3 px-3 font-semibold ${s.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {s.pnl >= 0 ? '+' : ''}${s.pnl.toFixed(2)}
+                    {s.pnl >= 0 ? '+' : ''}{currSymbol}{convert(Math.abs(s.pnl)).toFixed(2)}
                   </td>
                   <td className={`py-3 px-3 ${(s.pnl / s.count) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    ${(s.pnl / s.count).toFixed(2)}
+                    {currSymbol}{convert(s.pnl / s.count).toFixed(2)}
                   </td>
                 </tr>
               ))}
@@ -362,7 +364,7 @@ function Analytics() {
                   <td className="py-3 px-3 text-gray-300">{p.count}</td>
                   <td className="py-3 px-3 text-gray-300">{p.count > 0 ? ((p.wins / p.count) * 100).toFixed(0) : 0}%</td>
                   <td className={`py-3 px-3 font-semibold ${p.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {p.pnl >= 0 ? '+' : ''}${p.pnl.toFixed(2)}
+                    {p.pnl >= 0 ? '+' : ''}{currSymbol}{convert(Math.abs(p.pnl)).toFixed(2)}
                   </td>
                 </tr>
               ))}

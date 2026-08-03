@@ -23,21 +23,24 @@ const ORDER_TYPES = [
 const LEVERAGE_PRESETS = [1, 2, 3, 5, 10, 20, 25, 50, 75, 100, 125]
 const QTY_PRESETS = [25, 50, 75, 100]
 
-function ProOrderPanel({ onClose }) {
+function ProOrderPanel({ onClose, initialSide = 'buy', initialPrice, initialSymbolDisplay, quoteStatus = 'unavailable' }) {
   const currentPrice = useTradingStore(s => s.currentPrice)
   const account = useTradingStore(s => s.account)
   const placeOrder = useTradingStore(s => s.placeOrder)
-  const { symbol, symbolDisplay } = useChartStore()
+  const { symbolDisplay } = useChartStore()
+  const showConfirmation = useSettingsStore(s => s.showConfirmation)
+  const draftPrice = Number.isFinite(Number(initialPrice)) && Number(initialPrice) > 0 ? Number(initialPrice) : null
+  const orderSymbolDisplay = initialSymbolDisplay || symbolDisplay
 
   // Order state
-  const [side, setSide] = useState('buy')
+  const [side, setSide] = useState(initialSide)
   const [orderType, setOrderType] = useState('market')
   const [qty, setQty] = useState('1')
   const [qtyMode, setQtyMode] = useState('units') // units, contracts, usdt
   const [leverage, setLeverage] = useState(10)
   const [marginMode, setMarginMode] = useState('cross') // cross, isolated
-  const [limitPrice, setLimitPrice] = useState('')
-  const [stopPrice, setStopPrice] = useState('')
+  const [limitPrice, setLimitPrice] = useState(draftPrice ? String(draftPrice) : '')
+  const [stopPrice, setStopPrice] = useState(draftPrice ? String(draftPrice) : '')
   const [trailingDelta, setTrailingDelta] = useState('1')
 
   // TP/SL state
@@ -50,6 +53,14 @@ function ProOrderPanel({ onClose }) {
 
   // UI state
   const [showAdvanced, setShowAdvanced] = useState(false)
+
+  useEffect(() => {
+    setSide(initialSide)
+    if (draftPrice) {
+      setLimitPrice(String(draftPrice))
+      setStopPrice(String(draftPrice))
+    }
+  }, [draftPrice, initialSide])
 
   // Auto-set prices when order type or side changes
   useEffect(() => {
@@ -174,8 +185,9 @@ function ProOrderPanel({ onClose }) {
       toast.error(validation.errors[0])
       return
     }
+    if (showConfirmation && !window.confirm(`${side.toUpperCase()} ${qty} ${orderSymbolDisplay} at ${orderType === 'market' ? 'market' : `$${formatPrice(computed.price)}`} with ${leverage}x leverage?`)) return
     const result = placeOrder({
-      symbol: symbolDisplay,
+      symbol: orderSymbolDisplay,
       side,
       type: orderType === 'trailing' ? 'stop' : (orderType === 'oco' ? 'limit' : orderType === 'stop_limit' ? 'limit' : orderType),
       qty: computed.qtyNum,
@@ -186,7 +198,7 @@ function ProOrderPanel({ onClose }) {
       limitPrice: orderType !== 'market' ? computed.price : null,
     })
     if (result.success) {
-      toast.success(`${side.toUpperCase()} ${qty} ${symbolDisplay} @ $${formatPrice(computed.price)} (${leverage}x)`, { duration: 3000 })
+      toast.success(`${side.toUpperCase()} ${qty} ${orderSymbolDisplay} @ $${formatPrice(computed.price)} (${leverage}x)`, { duration: 3000 })
       onClose?.()
     } else {
       toast.error(result.error || 'Order failed')
@@ -207,13 +219,25 @@ function ProOrderPanel({ onClose }) {
   const isBuy = side === 'buy'
 
   return (
-    <div className="space-y-3">
+    <div
+      className="space-y-3"
+      data-paper-order-draft
+      data-draft-side={side}
+      data-draft-price={draftPrice || ''}
+      data-draft-quote-status={quoteStatus}
+    >
+      <div className="pro-terminal-paper-draft-summary" role="status">
+        <strong>Paper trading only</strong>
+        <span>{draftPrice ? `Draft quote $${formatPrice(draftPrice)}` : 'Review market price before submitting'} · {quoteStatus}</span>
+      </div>
       {/* ===== TOP SECTION: Pair + Live Bid/Ask + Buy/Sell ===== */}
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-white font-bold text-sm">{symbolDisplay}</span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#26a69a]/10 text-[#26a69a] font-medium">● LIVE</span>
+            <span className="text-white font-bold text-sm">{orderSymbolDisplay}</span>
+            <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${quoteStatus === 'current' ? 'bg-[#26a69a]/10 text-[#26a69a]' : quoteStatus === 'stale' ? 'bg-amber-400/10 text-amber-300' : 'bg-[#ef5350]/10 text-[#ef5350]'}`}>
+              {quoteStatus === 'current' ? '● CURRENT' : quoteStatus === 'stale' ? '◷ STALE' : '○ UNAVAILABLE'}
+            </span>
           </div>
           <div className="flex items-center gap-3 mt-0.5">
             <span className="text-[10px] text-gray-400">Bid: <span className="text-[#26a69a]">${computed.bidPrice}</span></span>
@@ -268,7 +292,7 @@ function ProOrderPanel({ onClose }) {
           <div className="flex items-center gap-1">
             <button onClick={() => setLimitPrice(p => (parseFloat(p) - (currentPrice > 100 ? 1 : 0.01)).toFixed(2))}
               className="w-8 h-8 rounded-lg bg-[#1e1e3a] text-gray-300 hover:text-white hover:bg-[#2a2a5a] flex items-center justify-center text-lg transition-all">−</button>
-            <input type="number" value={limitPrice} onChange={e => setLimitPrice(e.target.value)}
+            <input type="number" aria-label="Paper order price" data-paper-order-price value={limitPrice} onChange={e => setLimitPrice(e.target.value)}
               className="flex-1 px-3 py-2 rounded-lg bg-[#12122a] border border-[#2a2a5a] text-white text-sm text-center focus:border-[#26a69a] focus:outline-none transition-colors" step="any" />
             <button onClick={() => setLimitPrice(p => (parseFloat(p) + (currentPrice > 100 ? 1 : 0.01)).toFixed(2))}
               className="w-8 h-8 rounded-lg bg-[#1e1e3a] text-gray-300 hover:text-white hover:bg-[#2a2a5a] flex items-center justify-center text-lg transition-all">+</button>
@@ -479,7 +503,7 @@ function ProOrderPanel({ onClose }) {
 
       {/* ===== ACTION BUTTONS ===== */}
       <div className="space-y-2 pb-2">
-        <button onClick={handlePlaceOrder} disabled={!validation.valid || !currentPrice}
+        <button data-paper-order-submit onClick={handlePlaceOrder} disabled={!validation.valid || !currentPrice}
           className={`w-full py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.98] ${
             isBuy
               ? 'bg-gradient-to-r from-[#26a69a] to-[#2bbd9a] text-white shadow-lg shadow-[#26a69a]/25'

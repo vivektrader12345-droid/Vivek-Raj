@@ -848,10 +848,20 @@ def _trade_metrics(trades):
     }
 
 
-def create_webhook_blueprint(db, base_url=None):
+def create_webhook_blueprint(db, base_url=None, firebase_app=None):
     """Create the webhook intelligence Blueprint for an existing Firestore client."""
     bp = Blueprint("webhook_intelligence", __name__)
     configured_base_url = (base_url or os.environ.get("WEBHOOK_BASE_URL") or "").rstrip("/")
+
+    def public_endpoint(endpoint):
+        """Return a client-safe endpoint with the configured callback origin."""
+        result = _public_endpoint(endpoint)
+        if result and configured_base_url and result.get("id"):
+            result["webhookUrl"] = "%s/webhook/v1/%s" % (
+                configured_base_url,
+                result["id"],
+            )
+        return result
 
     @bp.before_request
     def assign_request_id():
@@ -864,17 +874,75 @@ def create_webhook_blueprint(db, base_url=None):
     def require_firebase_auth(handler):
         @wraps(handler)
         def wrapped(*args, **kwargs):
-            header = request.headers.get("Authorization", "")
-            if not header.startswith("Bearer ") or not header[7:].strip():
-                return _error("authentication_required", "A valid Firebase bearer token is required", 401)
+            parts = request.headers.get("Authorization", "").split()
+            if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1]:
+                return _error(
+                    "authentication_required",
+                    "A valid Firebase bearer token is required",
+                    401,
+                )
+
+            if firebase_app is None:
+                return _error(
+                    "auth_service_unavailable",
+                    "Authentication service is temporarily unavailable",
+                    503,
+                )
+
+            token = parts[1]
             try:
-                decoded = auth.verify_id_token(header[7:].strip())
+                decoded = auth.verify_id_token(
+                    token,
+                    app=firebase_app,
+                    check_revoked=True,
+                )
                 uid = decoded.get("uid") or decoded.get("sub")
                 if not uid:
-                    raise ValueError("missing uid")
+                    return _error(
+                        "invalid_token",
+                        "The Firebase bearer token is invalid",
+                        401,
+                    )
                 g.auth_uid = str(uid)
+            except auth.ExpiredIdTokenError:
+                return _error(
+                    "token_expired",
+                    "Your session token expired",
+                    401,
+                )
+            except (auth.RevokedIdTokenError, auth.UserNotFoundError):
+                return _error(
+                    "token_revoked",
+                    "Your session is no longer valid; sign in again",
+                    401,
+                )
+            except auth.UserDisabledError:
+                return _error(
+                    "user_disabled",
+                    "This user account is disabled",
+                    401,
+                )
+            except (auth.InvalidIdTokenError, ValueError):
+                return _error(
+                    "invalid_token",
+                    "The Firebase bearer token is invalid",
+                    401,
+                )
+            except auth.CertificateFetchError:
+                return _error(
+                    "auth_service_unavailable",
+                    "Authentication service is temporarily unavailable",
+                    503,
+                )
             except Exception:
-                return _error("invalid_token", "The Firebase bearer token is invalid or expired", 401)
+                # Unknown verification failures are infrastructure failures, not
+                # proof that a user's credential is invalid. Fail closed without
+                # returning exception text or token material.
+                return _error(
+                    "auth_service_unavailable",
+                    "Authentication service is temporarily unavailable",
+                    503,
+                )
             return handler(*args, **kwargs)
         return wrapped
 
@@ -1060,7 +1128,7 @@ def create_webhook_blueprint(db, base_url=None):
         records = _fetch_user_docs(db, uid, "webhook_endpoints", 200)
         if not records:
             records = _fetch_user_docs(db, uid, "endpoints", 200)
-        records = [_public_endpoint(item) for item in records if not item.get("deleted")]
+        records = [public_endpoint(item) for item in records if not item.get("deleted")]
         records.sort(key=lambda item: str(item.get("createdAt") or ""), reverse=True)
         return jsonify({"endpoints": records, "total": len(records), "requestId": _request_id()})
 
@@ -1121,7 +1189,7 @@ def create_webhook_blueprint(db, base_url=None):
             return _error("persistence_unavailable", "Unable to durably create the endpoint; retry later", 503)
         _audit(db, uid, "endpoint_created", endpoint_id, {"name": name, "mode": mode})
         return jsonify({
-            "endpoint": _public_endpoint(endpoint),
+            "endpoint": public_endpoint(endpoint),
             "secret": secret,
             "webhookUrl": webhook_url,
             "warning": "Store this secret now; it will not be shown again.",
@@ -1183,7 +1251,7 @@ def create_webhook_blueprint(db, base_url=None):
             return _error("persistence_unavailable", "Unable to update the endpoint; retry later", 503)
         _audit(db, uid, "endpoint_updated", endpoint_id, {"fields": sorted(updates.keys())})
         updated = {**endpoint, **updates}
-        return jsonify({"endpoint": _public_endpoint(updated), "requestId": _request_id()})
+        return jsonify({"endpoint": public_endpoint(updated), "requestId": _request_id()})
 
     @bp.post("/api/v1/webhooks/endpoints/<endpoint_id>/rotate-secret")
     @require_firebase_auth
@@ -1197,10 +1265,14 @@ def create_webhook_blueprint(db, base_url=None):
         if db is not None and not saved:
             return _error("persistence_unavailable", "Unable to rotate the endpoint secret; the previous secret remains authoritative", 503)
         _audit(db, uid, "endpoint_secret_rotated", endpoint_id)
+        webhook_url = "%s/webhook/v1/%s" % (
+            configured_base_url or request.url_root.rstrip("/"),
+            endpoint_id,
+        )
         return jsonify({
             "endpointId": endpoint_id,
             "secret": secret,
-            "webhookUrl": endpoint.get("webhookUrl") or "%s/webhook/v1/%s" % (configured_base_url or request.url_root.rstrip("/"), endpoint_id),
+            "webhookUrl": webhook_url,
             "warning": "Store this secret now; it will not be shown again.",
             "requestId": _request_id(),
         })
@@ -1288,6 +1360,11 @@ def create_webhook_blueprint(db, base_url=None):
     @require_firebase_auth
     def list_errors():
         return collection_response("webhook_errors", "errors", "errors")
+
+    @bp.get("/api/v1/webhooks/trades")
+    @require_firebase_auth
+    def list_webhook_trades():
+        return collection_response("webhook_trades", "webhook_trades", "trades")
 
     @bp.get("/api/v1/webhooks/executions")
     @require_firebase_auth

@@ -1,0 +1,739 @@
+{
+  "pbtResults": {
+    "1. Write the terminal geometry bug-condition exploration test": {
+      "status": "passed",
+      "failingExample": "Viewport/state: 1024x768, default. document.scrollWidth=1024, document.clientWidth=1024. Offending geometry: leftDrawingRail rect {left:8,top:142,right:80,bottom:646,width:72,height:504} intersects chartCanvas rect {left:0,top:88,right:1024,bottom:708,width:1024,height:620}; chartRangeControls rect {left:648.27,top:677,right:966,bottom:704,width:317.73,height:27} intersects timeScale rect {left:0,top:680,right:958,bottom:708,width:958,height:28}; left rail is absolute/unreserved and 72px (>44px), right rail is missing/unreserved; drawing controls Lock/Hide/Clone/Link/Delete escape below the 768px viewport; adjacent dock tab gaps are 0px (<8px). Expected invariant: expectedBehavior(X) must hold and isBugCondition(X) must be false. Run result: 72 unsafe snapshots out of 72.",
+      "lastRunTimestamp": 1785431893232
+    },
+    "2. Write preservation characterization property tests on the unfixed product": {
+      "status": "failed",
+      "failingExample": "Property 2: Preservation — Paper Trading and Journal Behavior\nError: Error: resize contract changed\n    at Object.characterizeChart (http://127.0.0.1:55767/tests/preservation/preservation.fixture.jsx:635:100)\n    at CdpClient.evaluate (file:///C:/Users/vivek/OneDrive/Documents/vivek-crypto-trader/tests/preservation/preservation.characterization.test.js:83:40)\n    at async TestContext.<anonymous> (file:///C:/Users/vivek/OneDrive/Documents/vivek-crypto-trader/tests/preservation/preservation.characterization.test.js:232:19)\n    at async Test.run (node:internal/test_runner/test:1332:7)\n    at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)",
+      "lastRunTimestamp": 1785448663229
+    }
+  },
+  "executionHistory": {
+    "1. Write the terminal geometry bug-condition exploration test": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430700794
+      },
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430778358
+      },
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785431985465
+      }
+    ],
+    "2. Write preservation characterization property tests on the unfixed product": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430700921
+      },
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785432035990
+      },
+      {
+        "executionId": "3898531f-5413-437d-a96c-22f451ba15aa",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785432930278
+      },
+      {
+        "executionId": "3898531f-5413-437d-a96c-22f451ba15aa",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785432980287
+      },
+      {
+        "executionId": "ac183cab-dd0e-4481-b1f1-4020179771aa",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785433403496
+      },
+      {
+        "executionId": "f83b7b16-d76f-43e0-b91a-6b62a5745446",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785434312089
+      },
+      {
+        "executionId": "f83b7b16-d76f-43e0-b91a-6b62a5745446",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785434328504
+      },
+      {
+        "executionId": "6fec764e-3c90-4e99-ab8c-88b275b3ab6c",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785437254858
+      }
+    ],
+    "3.1 Create the scoped terminal stylesheet and composition boundary": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430701049
+      },
+      {
+        "executionId": "8152d5e4-f18f-4037-a2be-ba164c03a2d9",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785443511658
+      },
+      {
+        "executionId": "8152d5e4-f18f-4037-a2be-ba164c03a2d9",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785443673275
+      }
+    ],
+    "3.2 Implement the deterministic CSS Grid shell": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430701168
+      },
+      {
+        "executionId": "8152d5e4-f18f-4037-a2be-ba164c03a2d9",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785443702879
+      },
+      {
+        "executionId": "8152d5e4-f18f-4037-a2be-ba164c03a2d9",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785444031293
+      }
+    ],
+    "3.3 Build the compact header and deterministic overflow priority": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430701271
+      },
+      {
+        "executionId": "8152d5e4-f18f-4037-a2be-ba164c03a2d9",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785444065108
+      },
+      {
+        "executionId": "8152d5e4-f18f-4037-a2be-ba164c03a2d9",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785444469702
+      }
+    ],
+    "3.4 Implement viewport-safe portal menu primitives": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430701436
+      },
+      {
+        "executionId": "8152d5e4-f18f-4037-a2be-ba164c03a2d9",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785444501505
+      },
+      {
+        "executionId": "8152d5e4-f18f-4037-a2be-ba164c03a2d9",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785444765684
+      }
+    ],
+    "3.5 Implement reserved compact rails and responsive drawers": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430701544
+      },
+      {
+        "executionId": "8152d5e4-f18f-4037-a2be-ba164c03a2d9",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785444804038
+      }
+    ],
+    "3.6 Add the paper SELL/BUY quote box through the explicit draft flow": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430701775
+      },
+      {
+        "executionId": "e718117f-e693-4a19-a368-a6d8d265bcdc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785446262068
+      }
+    ],
+    "3.7 Reserve chart HUD and paper-overlay safe zones": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430701945
+      },
+      {
+        "executionId": "f5257704-7407-4156-b1f4-3eb8520c7aab",
+        "chatSessionId": "sess_06c6d9e2-4cf0-4e6e-b579-a75893699b56",
+        "timestamp": 1785779154724
+      }
+    ],
+    "3.8 Rebuild the trading dock within fixed geometry limits": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430702294
+      }
+    ],
+    "3.9 Preserve professional chart presentation and interactions inside the new host": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430702429
+      }
+    ],
+    "3.10 Implement progressive tablet and mobile reflow": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430702528
+      }
+    ],
+    "3.11 Move baseline sidebar, status, and paper panels into shell boundaries": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430702635
+      }
+    ],
+    "3.12 Add shell-level accessibility and contextual interaction behavior": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430702729
+      }
+    ],
+    "3.13 Run clean-shell unit, integration, and overflow validation": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430702827
+      }
+    ],
+    "3.14 Capture release-gate screenshots and geometry artifacts": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430702929
+      }
+    ],
+    "3.15 Verify the original exploration test now passes": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430703034
+      }
+    ],
+    "3.16 Verify preservation characterization still passes": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430703130
+      }
+    ],
+    "4. Release gate — ship the fixed single-chart terminal before advanced features": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430703338
+      }
+    ],
+    "5.1 Define validated versioned `WorkspaceStore` state and commands": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430703470
+      }
+    ],
+    "5.2 Define non-persisted `RuntimeStore` state and lifecycle commands": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430703729
+      }
+    ],
+    "5.3 Implement the narrow `ChartAdapter` API and cleanup contract": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430703863
+      }
+    ],
+    "5.4 Add compatibility selectors and migrate the single chart to the adapter": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430703976
+      }
+    ],
+    "5.5 Add local draft deadline persistence and last-valid recovery": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430704117
+      }
+    ],
+    "5.6 Validate adapter/state separation and single-chart parity": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430704246
+      }
+    ],
+    "6.1 Implement inert drawing schemas and validation": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430704403
+      }
+    ],
+    "6.2 Implement pair-isolated drawing reducers and limits": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430704521
+      }
+    ],
+    "6.3 Implement command history, inverse operations, and redo truncation": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430704728
+      }
+    ],
+    "6.4 Implement drawing gesture state machines and adapter rendering": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430704931
+      }
+    ],
+    "6.5 Build drawing catalog, inspector, and hidden-item manager": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430705087
+      }
+    ],
+    "6.6 Persist pair drawings locally within the deadline": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430705371
+      }
+    ],
+    "6.7 Verify drawing isolation and reversible mutation": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430705491
+      }
+    ],
+    "7.1 Build the supported indicator schema and pure calculation registry": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430705635
+      }
+    ],
+    "7.2 Implement stable-ID instance reducers and atomic validation": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430705766
+      }
+    ],
+    "7.3 Render indicator overlays and panes through `ChartAdapter`": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430705879
+      }
+    ],
+    "7.4 Build the accessible indicator catalog and inspector": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430705990
+      }
+    ],
+    "7.5 Persist and restore complete indicator instance state": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430706113
+      }
+    ],
+    "7.6 Verify indicator instance independence and no-code safety": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430706239
+      }
+    ],
+    "8.1 Implement normalized acquire/release leases and ref counts": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430706363
+      }
+    ],
+    "8.2 Add channel-specific market validators and safe fan-out": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430706469
+      }
+    ],
+    "8.3 Migrate existing kline bootstrap/live behavior behind leases": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430706575
+      }
+    ],
+    "8.4 Add exchange-info, batched ticker, and depth channel ownership": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430706678
+      }
+    ],
+    "8.5 Implement truthful health, stale timers, bounded retry, and cleanup": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430706777
+      }
+    ],
+    "8.6 Verify subscription uniqueness and cleanup": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430706875
+      }
+    ],
+    "8.7 Run stream parity, leak, and failure-isolation integration tests": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430707022
+      }
+    ],
+    "9.1 Implement layout and active-tile transition reducers": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430707131
+      }
+    ],
+    "9.2 Render isolated `ChartTile` adapters in the responsive workspace grid": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430707235
+      }
+    ],
+    "9.3 Implement central symbol and timeframe linking": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430707338
+      }
+    ],
+    "9.4 Implement exact-time frame-throttled crosshair linking": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430707444
+      }
+    ],
+    "9.5 Integrate tile leases, hidden-state release, and local retry": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430707570
+      }
+    ],
+    "9.6 Verify chart layout and linking invariants": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430707675
+      }
+    ],
+    "10.1 Build the eligible-market catalog and symbol search": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430707840
+      }
+    ],
+    "10.2 Implement ordered duplicate-free watchlist state": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430707996
+      }
+    ],
+    "10.3 Implement deterministic scanner rows, filters, and stable sorting": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430708096
+      }
+    ],
+    "10.4 Build watchlist/scanner panels with truthful live states": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430708190
+      }
+    ],
+    "10.5 Verify deterministic watchlist and scanner behavior": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430708291
+      }
+    ],
+    "10.6 Run watchlist/scanner persistence, accessibility, and failure integration tests": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430708390
+      }
+    ],
+    "11.1 Implement validated snapshot/diff synchronization": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430708511
+      }
+    ],
+    "11.2 Implement precision aggregation, ordering, spread, and depth caps": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430708647
+      }
+    ],
+    "11.3 Integrate active-symbol depth leases and truthful recovery states": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430708752
+      }
+    ],
+    "11.4 Build the accessible order-book panel and paper-price prefill": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430708864
+      }
+    ],
+    "11.5 Verify order-book sequence safety": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430708964
+      }
+    ],
+    "11.6 Run order-book stream, recovery, and paper-only integration tests": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430709071
+      }
+    ],
+    "12.1 Implement the validated versioned layout envelope and size limits": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430709205
+      }
+    ],
+    "12.2 Implement pure migrations and staged atomic layout loading": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430709315
+      }
+    ],
+    "12.3 Implement authenticated UID-owned Firebase CRUD and rules": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430709428
+      }
+    ],
+    "12.4 Implement local draft, autosave, offline sync, and retry status": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430709567
+      }
+    ],
+    "12.5 Implement revision conflict detection and explicit resolution UI": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430709708
+      }
+    ],
+    "12.6 Synchronize pair drawings/preferences and isolate authentication changes": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430709831
+      }
+    ],
+    "12.7 Verify versioned layout recovery and authenticated ownership": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430709959
+      }
+    ],
+    "12.8 Harden exactly-once Pro Trading journal persistence without changing the bridge API": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430710087
+      }
+    ],
+    "12.9 Run complete layout CRUD/offline/conflict/recovery integration tests": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430710223
+      }
+    ],
+    "13.1 Complete the registry-driven contextual shortcut system": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430710361
+      }
+    ],
+    "13.2 Complete advanced-feature keyboard, screen-reader, touch, and zoom support": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430710668
+      }
+    ],
+    "13.3 Add feature-level error boundaries and recoverable state isolation": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430710798
+      }
+    ],
+    "13.4 Verify truthful per-resource live-data health": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430710906
+      }
+    ],
+    "13.5 Verify every market interaction remains paper-only": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430711017
+      }
+    ],
+    "13.6 Add safe external-data validation and redacted diagnostics": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430711127
+      }
+    ],
+    "13.7 Instrument and measure the required responsiveness distributions": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430711244
+      }
+    ],
+    "13.8 Verify accessible contextual interaction invariants": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430711356
+      }
+    ],
+    "13.9 Verify measured responsiveness and reliability targets": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430711463
+      }
+    ],
+    "13.10 Optional enhancement — move profiled indicator computation off the interaction path": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430711716
+      }
+    ],
+    "14.1 Run the complete functional and property regression suite": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430711850
+      }
+    ],
+    "14.2 Capture and approve the full visual/geometry matrix": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430711985
+      }
+    ],
+    "14.3 Run final performance and resource-cleanup acceptance": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430712110
+      }
+    ],
+    "14.4 Run final persistence, ownership, validation, and paper-only security acceptance": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430712236
+      }
+    ],
+    "14.5 Re-run the original bug and preservation gates unchanged": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430712336
+      }
+    ],
+    "14.6 Validate feature flags, failure isolation, and rollback recovery": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430712440
+      }
+    ],
+    "14.7 Final checkpoint — approve the advanced charting release": [
+      {
+        "executionId": "bfd2b864-86ae-404e-83d7-3e8d92f535dc",
+        "chatSessionId": "sess_0005525e-e531-43f3-ad7a-b336dece4994",
+        "timestamp": 1785430712583
+      }
+    ]
+  }
+}

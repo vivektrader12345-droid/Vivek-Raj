@@ -61,6 +61,10 @@ function AddTrade() {
     fees: '',
     date: new Date().toISOString().split('T')[0],
     time: new Date().toTimeString().slice(0, 5),
+    week: (() => {
+      const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+      return days[new Date().getDay()]
+    })(),
     strategy: '',
     timeframe: '',
     emotion: '',
@@ -103,26 +107,72 @@ function AddTrade() {
       const trade = getTradeById(id)
       if (trade) {
         setForm({
-          pair: trade.pair || '',
-          type: trade.type || 'long',
-          entryPrice: trade.entryPrice || '',
-          exitPrice: trade.exitPrice || '',
-          quantity: trade.quantity || '',
-          leverage: trade.leverage || '1',
-          stopLoss: trade.stopLoss || '',
-          takeProfit: trade.takeProfit || '',
-          fees: trade.fees || '',
-          date: trade.date || '',
-          time: trade.time || '',
-          strategy: trade.strategy || '',
-          timeframe: trade.timeframe || '',
-          emotion: trade.emotion || '',
-          rating: trade.rating || 3,
-          notes: trade.notes || '',
-          tags: trade.tags || '',
-          screenshot: trade.screenshot || '',
-          session: trade.session || '',
-          status: trade.status || 'closed',
+          // ── Core ──────────────────────────────────────────────────────────
+          pair:           trade.pair          || '',
+          type:           trade.type          || 'long',
+          entryPrice:     trade.entryPrice    || '',
+          exitPrice:      trade.exitPrice     || '',
+          quantity:       trade.quantity      || '',
+          leverage:       trade.leverage      || '1',
+          stopLoss:       trade.stopLoss      || '',
+          takeProfit:     trade.takeProfit    || '',
+          fees:           trade.fees          || '',
+          status:         trade.status        || 'closed',
+
+          // ── Timing & Strategy tab ─────────────────────────────────────────
+          date:           trade.date          || '',
+          time:           trade.time          || '',
+          // week: derive from date if not stored (covers legacy trades)
+          week:           trade.week          ||
+                          (() => {
+                            const d = trade.date || trade.entryTime
+                            if (!d) return ''
+                            const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+                            const parsed = new Date((String(d).length === 10 ? d + 'T12:00:00' : d))
+                            return isNaN(parsed) ? '' : days[parsed.getDay()]
+                          })(),
+          strategy:       trade.strategy      || '',
+          timeframe:      trade.timeframe     || '',
+          session:        trade.session       || '',
+          riskReward:     trade.riskReward    || '',
+          reaction:       trade.reaction      || '',
+          tags:           trade.tags          || '',
+
+          // ── Trade Execution tab ───────────────────────────────────────────
+          entryTime:      trade.entryTime     || '',
+          exitTime:       trade.exitTime      || '',
+          exitTimeHour:   trade.exitTimeHour  || '',
+          exitTimeMin:    trade.exitTimeMin   || '',
+          exitTimeAmPm:   trade.exitTimeAmPm  || 'AM',
+          holdTime:       trade.holdTime      || '',
+          volume:         trade.volume        || '',
+          slPercent:      trade.slPercent     || '',
+          targetPercent:  trade.targetPercent || '',
+          slHit:          trade.slHit         || 'No',
+          trailSL:        trade.trailSL       || 'No',
+          reEntry:        trade.reEntry       || 'No',
+          reTarget:       trade.reTarget      || 'No',
+          highBreakOut:   trade.highBreakOut  || 'No',
+
+          // ── Margins & P&L tab ─────────────────────────────────────────────
+          capturePercent: trade.capturePercent || '',
+          pnlAmount:      trade.pnlAmount     || '',
+          entryMargin:    trade.entryMargin   || '',
+          exitMargin:     trade.exitMargin    || '',
+
+          // ── Psychology & Notes tab ────────────────────────────────────────
+          emotion:        trade.emotion       || '',
+          rating:         trade.rating        || 3,
+          notes:          trade.notes         || '',
+          result:         trade.result        || '',
+          reasonToBuy:    trade.reasonToBuy   || '',
+          prepared:       trade.prepared      || 'Yes',
+          week2:          trade.week2         || '',
+
+          // ── Image ─────────────────────────────────────────────────────────
+          screenshot:     trade.screenshot    || '',
+          tradeImage:     trade.tradeImage    || '',
+          tradeImageName: trade.tradeImageName|| '',
         })
       }
     }
@@ -130,7 +180,16 @@ function AddTrade() {
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setForm(prev => ({ ...prev, [name]: value }))
+    setForm(prev => {
+      const updated = { ...prev, [name]: value }
+      // Auto-derive Week name whenever Date changes
+      if (name === 'date' && value) {
+        const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+        const d = new Date(value + 'T12:00:00')
+        updated.week = isNaN(d) ? prev.week : days[d.getDay()]
+      }
+      return updated
+    })
   }
 
   // Calculate live P&L preview
@@ -191,7 +250,8 @@ function AddTrade() {
       pair: '', type: 'long', entryPrice: '', exitPrice: '', quantity: '',
       leverage: '1', stopLoss: '', takeProfit: '', fees: '',
       date: new Date().toISOString().split('T')[0], time: new Date().toTimeString().slice(0, 5),
-      strategy: '', timeframe: '', emotion: '', rating: 3, notes: '', tags: '', screenshot: '', session: '', week: '', riskReward: '', reaction: '', slHit: 'No', trailSL: 'No', reEntry: 'No', reTarget: 'No', highBreakOut: 'No', result: '', entryTime: new Date().toTimeString().slice(0, 5), exitTime: '', exitTimeHour: '', exitTimeMin: '', exitTimeAmPm: 'AM', volume: '', holdTime: '', slPercent: '', targetPercent: '', capturePercent: '', pnlAmount: '', entryMargin: '', exitMargin: '', reasonToBuy: '', prepared: 'Yes', tradeImage: '', tradeImageName: '', status: 'closed',
+      week: (() => { const d=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']; return d[new Date().getDay()] })(),
+      strategy: '', timeframe: '', emotion: '', rating: 3, notes: '', tags: '', screenshot: '', session: '', riskReward: '', reaction: '', slHit: 'No', trailSL: 'No', reEntry: 'No', reTarget: 'No', highBreakOut: 'No', result: '', entryTime: new Date().toTimeString().slice(0, 5), exitTime: '', exitTimeHour: '', exitTimeMin: '', exitTimeAmPm: 'AM', volume: '', holdTime: '', slPercent: '', targetPercent: '', capturePercent: '', pnlAmount: '', entryMargin: '', exitMargin: '', reasonToBuy: '', prepared: 'Yes', tradeImage: '', tradeImageName: '', status: 'closed',
     })
   }
 

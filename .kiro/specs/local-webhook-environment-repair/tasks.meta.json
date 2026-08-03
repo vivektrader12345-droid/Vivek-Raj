@@ -1,0 +1,281 @@
+{
+  "pbtResults": {
+    "1. Write and run the finite read-only bug-condition exploration test against the existing project `.venv`": {
+      "status": "passed",
+      "failingExample": "{\"classification\":\"SECRET_RISK\",\"expected_behavior_holds\":false,\"counterexamples\":[{\"condition\":\"ProjectVenvSelected\",\"observed\":\"interpreter is inside OneDrive workspace\"},{\"condition\":\"UnsupportedPython\",\"observed\":\"3.14.6\"},{\"condition\":\"CorruptMetadata\",\"package\":\"~harset_normalizer-3.4.9.dist-info\"},{\"condition\":\"DependencyVersionMismatch\",\"package\":\"flask\",\"required\":\"3.0.0\",\"observed\":\"3.1.3\"},{\"condition\":\"DependencyVersionMismatch\",\"package\":\"flask-cors\",\"required\":\"4.0.0\",\"observed\":\"6.0.5\"},{\"condition\":\"DependencyVersionMismatch\",\"package\":\"python-dotenv\",\"required\":\"1.0.0\",\"observed\":null},{\"condition\":\"DependencyVersionMismatch\",\"package\":\"gunicorn\",\"required\":\"21.2.0\",\"observed\":null},{\"condition\":\"DependencyVersionMismatch\",\"package\":\"firebase-admin\",\"required\":\"6.4.0\",\"observed\":\"7.5.0\"},{\"condition\":\"DependencyWarning\",\"warning_class\":\"RequestsDependencyWarning\"},{\"condition\":\"NativeModuleBlockedOrUnavailable\",\"module\":\"grpc/cygrpc\",\"exception_class\":\"ImportError\",\"blocked_filename\":null,\"policy_block_suspected\":true},{\"condition\":\"SecretRisk\",\"module\":\"app\",\"observed\":\"probe skipped before import\"},{\"condition\":\"BackendHealthUnverified\",\"observed\":\"server startup and network requests prohibited during exploration\"}]}",
+      "lastRunTimestamp": 1785326050569
+    },
+    "2. Write and run observation-first preservation property tests on the unfixed baseline": {
+      "status": "passed",
+      "lastRunTimestamp": 1785326789766
+    },
+    "4.6 Verify the bug-condition exploration property now passes in the repaired context": {
+      "status": "passed",
+      "lastRunTimestamp": 1785335402572
+    },
+    "4.7 Verify Render read-only and rerun the preservation property": {
+      "status": "passed",
+      "lastRunTimestamp": 1785344547292
+    }
+  },
+  "executionHistory": {
+    "1. Write and run the finite read-only bug-condition exploration test against the existing project `.venv`": [
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785325653127
+      },
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785325696785
+      },
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785326093342
+      }
+    ],
+    "2. Write and run observation-first preservation property tests on the unfixed baseline": [
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785325653995
+      },
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785326111900
+      },
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785326478293
+      },
+      {
+        "executionId": "afa37149-4b71-4936-957e-7053f3326a31",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785326562229
+      },
+      {
+        "executionId": "afa37149-4b71-4936-957e-7053f3326a31",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785326961401
+      }
+    ],
+    "3. Obtain the explicit approval and safety gate for external provisioning": [
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785325654217
+      },
+      {
+        "executionId": "35a1e662-0291-4cca-8790-e1c0a6272303",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785327104755
+      },
+      {
+        "executionId": "35a1e662-0291-4cca-8790-e1c0a6272303",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785330998095
+      }
+    ],
+    "4.1 Provision and verify trusted native Windows CPython 3.11.9 x64": [
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785325654428
+      },
+      {
+        "executionId": "67719475-6cc8-42b6-b054-b5e0bcaf4c73",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785331143546
+      },
+      {
+        "executionId": "67719475-6cc8-42b6-b054-b5e0bcaf4c73",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785331763674
+      }
+    ],
+    "4.2 Create the approved versioned repair root, export tracked source only, and create the new venv": [
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785325654717
+      },
+      {
+        "executionId": "67719475-6cc8-42b6-b054-b5e0bcaf4c73",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785331775626
+      },
+      {
+        "executionId": "67719475-6cc8-42b6-b054-b5e0bcaf4c73",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785332571976
+      }
+    ],
+    "4.3 Install the repository-pinned dependency graph coherently in the new venv": [
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785325655297
+      },
+      {
+        "executionId": "67719475-6cc8-42b6-b054-b5e0bcaf4c73",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785332584389
+      },
+      {
+        "executionId": "67719475-6cc8-42b6-b054-b5e0bcaf4c73",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785332865483
+      }
+    ],
+    "4.4 Implement and run bounded secret-safe dependency, native-module, and application import verification": [
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785325655538
+      },
+      {
+        "executionId": "67719475-6cc8-42b6-b054-b5e0bcaf4c73",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785332883225
+      },
+      {
+        "executionId": "1517a70a-ac3e-4326-88e3-0f2c36a9b5d9",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785333448823
+      },
+      {
+        "executionId": "1517a70a-ac3e-4326-88e3-0f2c36a9b5d9",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785333808908
+      }
+    ],
+    "4.5 Implement and run the owned bounded local health harness": [
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785325655748
+      },
+      {
+        "executionId": "1517a70a-ac3e-4326-88e3-0f2c36a9b5d9",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785333831944
+      },
+      {
+        "executionId": "bd5d31fb-2118-4adc-9617-a62ad114f59a",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785334102948
+      },
+      {
+        "executionId": "bd5d31fb-2118-4adc-9617-a62ad114f59a",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785334337287
+      }
+    ],
+    "4.6 Verify the bug-condition exploration property now passes in the repaired context": [
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785325655960
+      },
+      {
+        "executionId": "1f0b68ff-a16d-41e2-a439-6f28cef67a68",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785334416775
+      },
+      {
+        "executionId": "66b82098-5643-4a64-b1f3-f2d32087c40b",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785335223668
+      },
+      {
+        "executionId": "66b82098-5643-4a64-b1f3-f2d32087c40b",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785335518823
+      }
+    ],
+    "4.7 Verify Render read-only and rerun the preservation property": [
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785325656637
+      },
+      {
+        "executionId": "66b82098-5643-4a64-b1f3-f2d32087c40b",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785335534273
+      },
+      {
+        "executionId": "63b4ed22-170c-4d89-b3b4-9a7214b0e055",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785339212559
+      },
+      {
+        "executionId": "63b4ed22-170c-4d89-b3b4-9a7214b0e055",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785339915107
+      },
+      {
+        "executionId": "13437d0d-6a66-4c08-bfe7-fd77809f087f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785343667698
+      }
+    ],
+    "4.8 Produce final reproducible local-run and recovery instructions": [
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785325656831
+      },
+      {
+        "executionId": "6f398481-58c0-4725-93a2-3385018d7c11",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785336166626
+      },
+      {
+        "executionId": "6f398481-58c0-4725-93a2-3385018d7c11",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785336347525
+      }
+    ],
+    "6. Checkpoint - Confirm the repair is reproducible, bounded, local-only, and preservation-safe": [
+      {
+        "executionId": "e353243f-4bcc-49a7-90fb-2ce204b22e7f",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785325657084
+      },
+      {
+        "executionId": "6f398481-58c0-4725-93a2-3385018d7c11",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785336395225
+      },
+      {
+        "executionId": "6f398481-58c0-4725-93a2-3385018d7c11",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785337429430
+      }
+    ],
+    "4. Implement the approved external local-environment repair": [
+      {
+        "executionId": "6f398481-58c0-4725-93a2-3385018d7c11",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785336347790
+      }
+    ],
+    "5. Optional destructive cleanup of the old project `.venv`": [
+      {
+        "executionId": "d40db2e7-0fd8-4b71-9265-7d55f02b9190",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785340658849
+      },
+      {
+        "executionId": "d40db2e7-0fd8-4b71-9265-7d55f02b9190",
+        "chatSessionId": "sess_86d217b1-8dbd-43c9-9a82-a6042994e297",
+        "timestamp": 1785341077741
+      }
+    ]
+  }
+}

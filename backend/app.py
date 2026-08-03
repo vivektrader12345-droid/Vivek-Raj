@@ -25,8 +25,8 @@ import json
 import os
 import uuid
 import ccxt
-import firebase_admin
-from firebase_admin import credentials, firestore, auth as firebase_auth
+from firebase_admin import auth as firebase_auth
+from firebase_admin_setup import initialize_firebase_services
 from binance_sync import start_sync_for_user, stop_sync_for_user, get_sync_status, BinanceSyncService
 
 app = Flask(__name__)
@@ -43,26 +43,21 @@ except:
 BINANCE_API_KEY = os.environ.get('BINANCE_API_KEY', '')
 BINANCE_API_SECRET = os.environ.get('BINANCE_API_SECRET', '')
 USE_TESTNET = os.environ.get('USE_TESTNET', 'false').lower() == 'true'
+CONNECT_EXCHANGE_ON_STARTUP = os.environ.get('CONNECT_EXCHANGE_ON_STARTUP', 'false').lower() == 'true'
 
-# Firebase initialization (optional — works without it too)
+# Firebase Admin uses Application Default Credentials. In hosted environments,
+# GOOGLE_APPLICATION_CREDENTIALS may reference a securely mounted secret file.
 FIREBASE_PROJECT_ID = os.environ.get('FIREBASE_PROJECT_ID', 'vivek-crypto-trader-b8d19')
+firebase_services = initialize_firebase_services(FIREBASE_PROJECT_ID)
+firebase_app = firebase_services.app
+db = firebase_services.db
 
-try:
-    if not firebase_admin._apps:
-        # Try service account first, then default credentials, then skip
-        try:
-            cred = credentials.Certificate('serviceAccountKey.json')
-            firebase_admin.initialize_app(cred)
-        except:
-            try:
-                firebase_admin.initialize_app()
-            except:
-                pass
-    db = firestore.client()
-    print("[OK] Firebase connected")
-except Exception as e:
-    print(f"[WARN] Firebase not available: {e} — Running without Firebase storage")
-    db = None
+if firebase_services.auth_ready and db is not None:
+    print("[OK] Firebase authentication and Firestore connected")
+elif firebase_services.auth_ready:
+    print("[WARN] Firebase authentication connected; Firestore storage unavailable")
+else:
+    print("[WARN] Firebase authentication unavailable; protected APIs fail closed")
 
 # Legacy webhook live execution is disabled by default. The v1 intelligence
 # system is the supported ingestion path and remains fail-closed for live orders.
@@ -76,9 +71,17 @@ def require_firebase_user(handler):
         header = request.headers.get('Authorization', '')
         if not header.startswith('Bearer '):
             return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+        if firebase_app is None:
+            return jsonify({'status': 'error', 'message': 'Authentication service unavailable'}), 503
         try:
-            decoded = firebase_auth.verify_id_token(header[7:].strip())
+            decoded = firebase_auth.verify_id_token(
+                header[7:].strip(),
+                app=firebase_app,
+                check_revoked=True,
+            )
             uid = decoded.get('uid') or decoded.get('sub')
+            if not uid:
+                return jsonify({'status': 'error', 'message': 'Invalid token'}), 401
         except Exception:
             return jsonify({'status': 'error', 'message': 'Invalid or expired token'}), 401
         requested_uid = kwargs.get('user_id')
@@ -100,6 +103,7 @@ if 'webhook_intelligence' not in app.blueprints:
     app.register_blueprint(create_webhook_blueprint(
         db,
         base_url=os.environ.get('WEBHOOK_BASE_URL'),
+        firebase_app=firebase_app,
     ))
 
 # ===== IN-MEMORY STORAGE (fallback when Firebase not available) =====
@@ -146,8 +150,9 @@ def connect_exchange(api_key=None, api_secret=None, testnet=False):
         exchange = None
         return False
 
-# Try connecting on startup
-if BINANCE_API_KEY and BINANCE_API_SECRET:
+# Exchange startup is explicit opt-in to prevent credential-bearing .env files
+# from causing network activity during backend startup.
+if CONNECT_EXCHANGE_ON_STARTUP and BINANCE_API_KEY and BINANCE_API_SECRET:
     connect_exchange(testnet=USE_TESTNET)
 
 

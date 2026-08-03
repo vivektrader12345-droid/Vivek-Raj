@@ -24,5 +24,7 @@ services:
         value: "120"
       - key: AUTO_TRADE_ENABLED
         value: "false"
+      - key: CONNECT_EXCHANGE_ON_STARTUP
+        value: "false"
       - key: USE_TESTNET
         value: "true"

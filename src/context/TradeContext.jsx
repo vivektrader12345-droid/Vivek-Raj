@@ -5,42 +5,66 @@
  */
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { useAuth } from './AuthContext'
+import { auth } from '../firebase'
 import {
   getTrades, addTrade as addTradeFS,
   updateTrade as updateTradeFS, deleteTrade as deleteTradeFS,
-  subscribeTrades,
+  subscribeTrades, batchImportTrades,
 } from '../services/firestoreService'
+import { parseImportCSV } from '../utils/csvImporter'
 
 const TradeContext = createContext(null)
 
 export function TradeProvider({ children }) {
-  const { user } = useAuth()
+  const { user, userSettings } = useAuth()
   const [trades, setTrades] = useState([])
   const [loading, setLoading] = useState(false)
+  const [tradeError, setTradeError] = useState(null)
+  const uid = auth.currentUser?.uid || user?.uid || user?.id || null
 
-  // Subscribe to trades when user logs in, clear on logout
+  // Subscribe using Firebase Auth's authoritative UID, never a profile field.
   useEffect(() => {
-    if (!user || !user.uid) {
+    if (!user || !uid) {
       setTrades([])
+      setTradeError(null)
       return
     }
 
     setLoading(true)
+    setTradeError(null)
 
-    // Real-time listener for trades
-    const unsubscribe = subscribeTrades(user.uid, (tradesList) => {
-      // Convert Firestore timestamps to ISO strings for compatibility
-      const formatted = tradesList.map(t => ({
-        ...t,
-        createdAt: t.createdAt?.toDate?.() ? t.createdAt.toDate().toISOString() : t.createdAt,
-        updatedAt: t.updatedAt?.toDate?.() ? t.updatedAt.toDate().toISOString() : t.updatedAt,
-      }))
-      setTrades(formatted)
+    let cancelled = false
+    const formatTrades = (tradesList) => tradesList.map(t => ({
+      ...t,
+      createdAt: t.createdAt?.toDate?.() ? t.createdAt.toDate().toISOString() : t.createdAt,
+      updatedAt: t.updatedAt?.toDate?.() ? t.updatedAt.toDate().toISOString() : t.updatedAt,
+    }))
+    const applyTrades = (tradesList) => {
+      if (cancelled) return
+      setTrades(formatTrades(tradesList))
+      setTradeError(null)
       setLoading(false)
-    })
+    }
+    const handleError = (error) => {
+      if (cancelled) return
+      console.error('Trade synchronization failed:', error)
+      setTradeError(error?.message || 'Unable to load trades from Firestore')
+      setLoading(false)
+    }
+    const refreshTrades = () => getTrades(uid).then(applyTrades).catch(handleError)
 
-    return () => unsubscribe()
-  }, [user])
+    const unsubscribe = subscribeTrades(uid, applyTrades, handleError)
+    refreshTrades()
+    const refreshInterval = setInterval(refreshTrades, 10000)
+    window.addEventListener('focus', refreshTrades)
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+      clearInterval(refreshInterval)
+      window.removeEventListener('focus', refreshTrades)
+    }
+  }, [user, uid])
 
   const addTrade = async (trade) => {
     if (!user) return null
@@ -50,9 +74,9 @@ export function TradeProvider({ children }) {
       ...trade,
       pnl,
       pnlPercent,
-      userId: user.uid,
+      userId: uid,
     }
-    const docId = await addTradeFS(user.uid, newTrade)
+    const docId = await addTradeFS(uid, newTrade)
     return { ...newTrade, id: docId }
   }
 
@@ -63,19 +87,63 @@ export function TradeProvider({ children }) {
     const merged = { ...existing, ...updatedData }
     const pnl = calculatePnL(merged)
     const pnlPercent = calculatePnLPercent(merged)
-    await updateTradeFS(user.uid, id, { ...updatedData, pnl, pnlPercent })
+    await updateTradeFS(uid, id, { ...updatedData, pnl, pnlPercent })
   }
 
   const deleteTrade = async (id) => {
-    if (!user) return
-    await deleteTradeFS(user.uid, id)
+    if (!user || !id) return
+    try {
+      const { collection: col, getDocs, deleteDoc: delDoc, doc: docRef } = await import('firebase/firestore')
+      const { db: fireDb } = await import('../firebase')
+
+      // Get ALL trades and find the one matching this id
+      const tradesRef = col(fireDb, 'users', uid, 'trades')
+      const snap = await getDocs(tradesRef)
+
+      let deleted = false
+      for (const docSnap of snap.docs) {
+        if (docSnap.id === id || docSnap.data().tradeId === id || docSnap.data().id === id) {
+          await delDoc(docSnap.ref)
+          deleted = true
+          break
+        }
+      }
+
+      if (!deleted) {
+        // Last resort — try direct delete
+        await delDoc(docRef(fireDb, 'users', uid, 'trades', id))
+      }
+
+      // Force update local state
+      setTrades(prev => prev.filter(t => t.id !== id))
+    } catch (err) {
+      console.error('Delete failed:', err)
+      // Force remove from UI anyway
+      setTrades(prev => prev.filter(t => t.id !== id))
+    }
   }
 
   const deleteAllTrades = async () => {
     if (!user) return
-    // Delete each trade individually
-    for (const trade of trades) {
-      await deleteTradeFS(user.uid, trade.id)
+    try {
+      // Direct Firestore batch delete — most reliable
+      const { collection, getDocs, writeBatch } = await import('firebase/firestore')
+      const { db } = await import('../firebase')
+      const tradesRef = collection(db, 'users', uid, 'trades')
+      const snap = await getDocs(tradesRef)
+      if (snap.empty) {
+        setTrades([])
+        return
+      }
+      const { writeBatch: createBatch } = await import('firebase/firestore')
+      const batch = writeBatch(db)
+      snap.docs.forEach(docSnap => batch.delete(docSnap.ref))
+      await batch.commit()
+      setTrades([])
+    } catch (err) {
+      console.error('Delete all error:', err)
+      // Force clear local state anyway
+      setTrades([])
     }
   }
 
@@ -155,8 +223,109 @@ export function TradeProvider({ children }) {
 
   const getTradeById = (id) => trades.find(t => t.id === id)
 
+  /**
+   * importTrades — full CSV import pipeline
+   *
+   * 1. Parses the CSV text using the auto-mapping importer.
+   * 2. Runs duplicate detection against the current `trades` state.
+   * 3. Writes new trades (setDoc with importId key) and updates existing ones
+   *    via batchImportTrades, which respects Firestore's 500-op batch limit.
+   * 4. Returns an ImportResult the UI can show as a summary.
+   *    The real-time Firestore listener in this context automatically re-syncs
+   *    all pages (Dashboard, Analytics, Calendar, History) after the batch commit.
+   *
+   * @param {string}   csvText
+   * @param {function(number):void} [onProgress]  0-100 callback
+   * @returns {Promise<ImportResult>}
+   *
+   * ImportResult {
+   *   totalRows:    number,
+   *   inserted:     number,
+   *   updated:      number,
+   *   skipped:      number,
+   *   failed:       number,
+   *   errors:       string[],   // parse-level errors
+   *   rowErrors:    { rowIndex: number, messages: string[] }[],
+   *   headerWarning: string|null,
+   * }
+   */
+  const importTrades = async (csvText, onProgress) => {
+    if (!user || !uid) {
+      return {
+        totalRows: 0, inserted: 0, updated: 0, skipped: 0, failed: 0,
+        errors: ['Not authenticated'], rowErrors: [], headerWarning: null,
+      }
+    }
+
+    // Step 1 – Parse & classify (pure, no network)
+    // Resolve timezone: user settings → browser locale → UTC fallback
+    const timezone = userSettings?.timezone
+      || Intl.DateTimeFormat().resolvedOptions().timeZone
+      || 'UTC'
+
+    onProgress?.(5)
+    const parseResult = parseImportCSV(csvText, trades, timezone)
+    onProgress?.(20)
+
+    const { toInsert, toUpdate, toSkip, parseErrors, headerWarning, totalRows } = parseResult
+
+    // Build top-level error strings from parse errors
+    const errors = parseErrors.flatMap(e => e.messages)
+
+    // If nothing to do, return early
+    if (toInsert.length === 0 && toUpdate.length === 0) {
+      onProgress?.(100)
+      return {
+        totalRows,
+        inserted:     0,
+        updated:      0,
+        skipped:      toSkip.length,
+        failed:       parseErrors.filter(e => e.rowIndex >= 0).length,
+        errors,
+        rowErrors:    parseErrors,
+        headerWarning,
+      }
+    }
+
+    // Step 2 – Enrich each trade (pnl, pnlPercent, userId) exactly like addTrade does
+    // This ensures exitPrice, entryPrice, type etc. all produce correct computed values
+    const enrichedInserts = toInsert.map(({ trade, rowIndex }) => {
+      const enriched = {
+        ...trade,
+        pnl:        calculatePnL(trade),
+        pnlPercent: calculatePnLPercent(trade),
+        userId:     uid,
+      }
+      return { trade: enriched, rowIndex }
+    })
+
+    // Step 3 – Write to Firestore
+    // Map progress from 20→95 while batchImportTrades runs
+    const wrappedProgress = (pct) => onProgress?.(20 + Math.round(pct * 0.75))
+
+    const writeResult = await batchImportTrades(uid, enrichedInserts, toUpdate, wrappedProgress)
+    onProgress?.(100)
+
+    // Collect write-level errors
+    const writeErrors = [
+      ...writeResult.insertErrors,
+      ...writeResult.updateErrors,
+    ]
+
+    return {
+      totalRows,
+      inserted:     writeResult.inserted,
+      updated:      writeResult.updated,
+      skipped:      toSkip.length,
+      failed:       writeResult.failed + parseErrors.filter(e => e.rowIndex >= 0).length,
+      errors:       [...errors, ...writeErrors],
+      rowErrors:    parseErrors,
+      headerWarning,
+    }
+  }
+
   return (
-    <TradeContext.Provider value={{ trades, loading, addTrade, updateTrade, deleteTrade, deleteAllTrades, getStats, getTradeById }}>
+    <TradeContext.Provider value={{ trades, loading, tradeError, addTrade, updateTrade, deleteTrade, deleteAllTrades, getStats, getTradeById, importTrades }}>
       {children}
     </TradeContext.Provider>
   )

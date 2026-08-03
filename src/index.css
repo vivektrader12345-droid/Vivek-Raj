@@ -64,6 +64,11 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .animate-slideIn { animation: slideIn 0.3s ease-out; }
 .animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
 .animate-float { animation: float 3s ease-in-out infinite; }
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
 
 @layer utilities {
   .glass-card {

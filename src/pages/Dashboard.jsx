@@ -1,10 +1,11 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTrades } from '../context/TradeContext'
 import { useAuth } from '../context/AuthContext'
 import { useCurrency } from '../context/CurrencyContext'
 import { requestNotificationPermission } from '../utils/notifications'
 import { exportMonthlyReport } from '../utils/exportPDF'
+import CSVImport from '../components/CSVImport'
 import {
   TrendingUp, TrendingDown, Target, DollarSign, Award, Activity,
   ArrowUpRight, ArrowDownRight, Flame, PlusCircle, History
@@ -12,22 +13,31 @@ import {
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts'
 
 function Dashboard() {
-  const { trades, getStats } = useTrades()
+  const { trades, getStats, tradeError } = useTrades()
   const { user } = useAuth()
+  const [showImport, setShowImport] = useState(false)
   const { formatAmount, symbol } = useCurrency()
   const stats = getStats()
 
   const recentTrades = trades.slice(0, 7)
 
   // Mini equity curve for dashboard
-  const equityCurve = trades
-    .slice()
-    .reverse()
-    .reduce((acc, trade, idx) => {
-      const prev = acc.length > 0 ? acc[acc.length - 1].balance : 0
-      acc.push({ trade: idx + 1, balance: parseFloat((prev + trade.pnl).toFixed(2)) })
-      return acc
-    }, [])
+  const equityCurve = (() => {
+    try {
+      return trades
+        .slice()
+        .reverse()
+        .reduce((acc, trade, idx) => {
+          const prev = acc.length > 0 ? acc[acc.length - 1].balance : 0
+          const tradePnl = Number(trade.pnl) || 0
+          acc.push({ trade: idx + 1, balance: parseFloat((prev + tradePnl).toFixed(2)) })
+          return acc
+        }, [])
+    } catch (e) {
+      console.error('Equity curve calculation error:', e)
+      return []
+    }
+  })()
 
   // Additional stats for photo-matching
   const totalProfit = trades.filter(t => t.pnl > 0).reduce((sum, t) => sum + t.pnl, 0)
@@ -65,6 +75,10 @@ function Dashboard() {
           <p className="text-gray-400 mt-1">Here's your trading performance overview</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => setShowImport(!showImport)}
+            className="flex items-center gap-2 px-4 py-2 bg-[#e94560]/20 text-[#e94560] border border-[#e94560]/30 rounded-xl hover:bg-[#e94560]/30 transition-all text-sm">
+            📊 Import CSV
+          </button>
           <button onClick={() => exportMonthlyReport(trades)}
             className="flex items-center gap-2 px-4 py-2 bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded-xl hover:bg-purple-500/30 transition-all text-sm">
             📤 Export PDF
@@ -82,6 +96,19 @@ function Dashboard() {
           </Link>
         </div>
       </div>
+
+      {tradeError && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          Firestore trade sync error: {tradeError}
+        </div>
+      )}
+
+      {/* CSV Import Section */}
+      {showImport && (
+        <div className="glass-card p-5">
+          <CSVImport onComplete={() => setShowImport(false)} />
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -206,12 +233,12 @@ function Dashboard() {
                         {trade.type.toUpperCase()}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-gray-300">{symbol}{trade.entryPrice}</td>
-                    <td className="py-3 px-3 text-gray-300">{symbol}{trade.exitPrice}</td>
-                    <td className={`py-3 px-3 font-semibold ${trade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {trade.pnl >= 0 ? '+' : ''}{formatAmount(trade.pnl)}
+                    <td className="py-3 px-3 text-gray-300">{trade.entryPrice == null ? '—' : `${symbol}${trade.entryPrice}`}</td>
+                    <td className="py-3 px-3 text-gray-300">{trade.exitPrice == null ? 'Open' : `${symbol}${trade.exitPrice}`}</td>
+                    <td className={`py-3 px-3 font-semibold ${Number(trade.pnl) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {trade.pnl == null ? '—' : `${Number(trade.pnl) >= 0 ? '+' : ''}${formatAmount(Number(trade.pnl))}`}
                     </td>
-                    <td className="py-3 px-3 text-gray-400 text-xs">{new Date(trade.date).toLocaleDateString()}</td>
+                    <td className="py-3 px-3 text-gray-400 text-xs">{trade.date ? new Date(trade.date).toLocaleDateString() : '—'}</td>
                   </tr>
                 ))}
               </tbody>

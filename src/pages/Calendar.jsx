@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { useTrades } from '../context/TradeContext'
 import { useAuth } from '../context/AuthContext'
+import { useCurrency } from '../context/CurrencyContext'
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react'
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -11,6 +12,7 @@ const SESSIONS = ['London','New York','Tokyo','Sydney']
 function Calendar() {
   const { trades } = useTrades()
   const { user } = useAuth()
+  const { currency: currencyName, symbol: currency, toggleCurrency, convert } = useCurrency()
   const now = new Date()
   const [currentMonth, setCurrentMonth] = useState(now.getMonth())
   const [currentYear, setCurrentYear] = useState(now.getFullYear())
@@ -18,7 +20,6 @@ function Calendar() {
   const [selectedDate, setSelectedDate] = useState(null)
   const [selectedWeek, setSelectedWeek] = useState('all')
   const [selectedDayFilter, setSelectedDayFilter] = useState('all')
-  const currency = '₹'
 
   const getDaysInMonth = (m, y) => new Date(y, m + 1, 0).getDate()
   const getFirstDayOfMonth = (m, y) => new Date(y, m, 1).getDay()
@@ -270,9 +271,6 @@ function Calendar() {
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <CalendarIcon className="text-[#e94560]" /> Trading Calendar
         </h1>
-        <div className="px-3 py-1.5 bg-[#f5a623]/20 text-[#f5a623] rounded-lg text-sm font-medium">
-          💰 {currency} INR
-        </div>
       </div>
 
       {/* Filters */}
@@ -360,7 +358,7 @@ function Calendar() {
               <div key={day} onClick={() => setSelectedDate(day)} className={`aspect-square flex flex-col items-center justify-center rounded-md text-[10px] transition-all cursor-pointer hover:scale-105 hover:shadow-lg ${dimmed ? 'opacity-30' : ''} ${isToday ? 'ring-2 ring-[#e94560] bg-[#e94560]/10' : ''} ${count > 0 ? pnl > 0 ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-red-500/10 border border-red-500/30' : 'border border-[#0f3460]/20 hover:border-[#0f3460]'}`}>
                 <span className={`font-medium ${isToday?'text-[#e94560]':'text-gray-300'}`}>{day}</span>
                 {count > 0 && <>
-                  <span className={`font-bold ${pnl>=0?'text-emerald-400':'text-red-400'}`}>{currency}{Math.abs(pnl).toFixed(0)}</span>
+                  <span className={`font-bold ${pnl>=0?'text-emerald-400':'text-red-400'}`}>{currency}{Math.abs(convert(pnl)).toFixed(0)}</span>
                   <span className="text-gray-400 text-[8px]">{count} trade{count>1?'s':''}</span>
                 </>}
               </div>
@@ -387,7 +385,7 @@ function Calendar() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center p-3 bg-[#0a0a1a] rounded-xl border border-[#0f3460]/30">
               <p className="text-gray-400 text-xs">Monthly P&L</p>
-              <p className={`text-xl font-bold mt-1 ${monthlyStats.pnl>=0?'text-emerald-400':'text-red-400'}`}>{currency}{monthlyStats.pnl.toFixed(2)}</p>
+              <p className={`text-xl font-bold mt-1 ${monthlyStats.pnl>=0?'text-emerald-400':'text-red-400'}`}>{currency}{convert(monthlyStats.pnl).toFixed(2)}</p>
             </div>
             <div className="text-center p-3 bg-[#0a0a1a] rounded-xl border border-[#0f3460]/30">
               <p className="text-gray-400 text-xs">Total Trades</p>
@@ -420,7 +418,7 @@ function Calendar() {
           </div>
           <div className="text-center p-3 bg-[#0a0a1a] rounded-xl border border-[#0f3460]/30 mt-4">
             <p className="text-gray-400 text-xs">Avg P&L/Trade</p>
-            <p className={`text-xl font-bold mt-1 ${monthlyStats.avg>=0?'text-emerald-400':'text-red-400'}`}>{currency}{monthlyStats.avg.toFixed(2)}</p>
+            <p className={`text-xl font-bold mt-1 ${monthlyStats.avg>=0?'text-emerald-400':'text-red-400'}`}>{currency}{convert(monthlyStats.avg).toFixed(2)}</p>
           </div>
 
           {/* Best / Worst Stats */}
@@ -440,7 +438,7 @@ function Calendar() {
                 </div>
                 <div className="text-center p-3 bg-[#0a0a1a] rounded-xl border border-emerald-500/20">
                   <p className="text-gray-400 text-xs">Best Day P&L</p>
-                  <p className="text-emerald-400 font-bold text-lg mt-1">{currency}{bestDayOfWeek.pnl.toFixed(2)}</p>
+                  <p className="text-emerald-400 font-bold text-lg mt-1">{currency}{convert(bestDayOfWeek.pnl).toFixed(2)}</p>
                 </div>
                 <div className="text-center p-3 bg-[#0a0a1a] rounded-xl border border-red-500/20">
                   <p className="text-gray-400 text-xs">⚠️ Worst Day</p>
@@ -448,7 +446,7 @@ function Calendar() {
                 </div>
                 <div className="text-center p-3 bg-[#0a0a1a] rounded-xl border border-red-500/20">
                   <p className="text-gray-400 text-xs">Worst Day P&L</p>
-                  <p className="text-red-400 font-bold text-lg mt-1">{currency}{worstDayOfWeek ? worstDayOfWeek.pnl.toFixed(2) : '0.00'}</p>
+                  <p className="text-red-400 font-bold text-lg mt-1">{currency}{worstDayOfWeek ? convert(worstDayOfWeek.pnl).toFixed(2) : '0.00'}</p>
                 </div>
               </div>
             )}
@@ -462,7 +460,7 @@ function Calendar() {
                 </div>
                 <div className="text-center p-3 bg-[#0a0a1a] rounded-xl border border-emerald-500/20">
                   <p className="text-gray-400 text-xs">Best Week P&L</p>
-                  <p className="text-emerald-400 font-bold text-lg mt-1">{currency}{bestWeek.pnl.toFixed(2)}</p>
+                  <p className="text-emerald-400 font-bold text-lg mt-1">{currency}{convert(bestWeek.pnl).toFixed(2)}</p>
                 </div>
                 <div className="text-center p-3 bg-[#0a0a1a] rounded-xl border border-red-500/20">
                   <p className="text-gray-400 text-xs">📅 Worst Week</p>
@@ -470,7 +468,7 @@ function Calendar() {
                 </div>
                 <div className="text-center p-3 bg-[#0a0a1a] rounded-xl border border-red-500/20">
                   <p className="text-gray-400 text-xs">Worst Week P&L</p>
-                  <p className="text-red-400 font-bold text-lg mt-1">{currency}{worstWeek ? worstWeek.pnl.toFixed(2) : '0.00'}</p>
+                  <p className="text-red-400 font-bold text-lg mt-1">{currency}{worstWeek ? convert(worstWeek.pnl).toFixed(2) : '0.00'}</p>
                 </div>
               </div>
             )}
@@ -484,7 +482,7 @@ function Calendar() {
                 </div>
                 <div className="text-center p-3 bg-[#0a0a1a] rounded-xl border border-emerald-500/20">
                   <p className="text-gray-400 text-xs">Best Month P&L</p>
-                  <p className="text-emerald-400 font-bold text-lg mt-1">{currency}{bestMonth.pnl.toFixed(2)}</p>
+                  <p className="text-emerald-400 font-bold text-lg mt-1">{currency}{convert(bestMonth.pnl).toFixed(2)}</p>
                 </div>
                 <div className="text-center p-3 bg-[#0a0a1a] rounded-xl border border-red-500/20">
                   <p className="text-gray-400 text-xs">📆 Worst Month</p>
@@ -492,7 +490,7 @@ function Calendar() {
                 </div>
                 <div className="text-center p-3 bg-[#0a0a1a] rounded-xl border border-red-500/20">
                   <p className="text-gray-400 text-xs">Worst Month P&L</p>
-                  <p className="text-red-400 font-bold text-lg mt-1">{currency}{worstMonth ? worstMonth.pnl.toFixed(2) : '0.00'}</p>
+                  <p className="text-red-400 font-bold text-lg mt-1">{currency}{worstMonth ? convert(worstMonth.pnl).toFixed(2) : '0.00'}</p>
                 </div>
               </div>
             )}
