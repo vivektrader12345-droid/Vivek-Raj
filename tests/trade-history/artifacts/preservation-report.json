@@ -1,0 +1,578 @@
+{
+  "property": "Property 2: Preservation — Canonical Trade History and Navigation Behavior",
+  "expectedResultOnUnfixedApplication": "PASS",
+  "seed": 3088422,
+  "canonicalOrigins": [
+    "manual",
+    "csv_import",
+    "pro_trading",
+    "tradingview_extension"
+  ],
+  "observations": {
+    "initial": {
+      "path": "/history",
+      "rows": [
+        {
+          "id": "tradingview-loss",
+          "date": {
+            "calendarDate": "2028-09-29",
+            "time": "18:00"
+          },
+          "pair": "AVAX/USDT",
+          "type": "SHORT",
+          "entry": "$40",
+          "exit": "$41",
+          "quantity": "1",
+          "pnl": {
+            "amount": "$-1.00",
+            "percent": "-0.1%"
+          },
+          "strategy": "Momentum",
+          "rating": "⭐⭐",
+          "editTarget": "/edit-trade/tradingview-loss"
+        },
+        {
+          "id": "pro-win",
+          "date": {
+            "calendarDate": "2027-08-28",
+            "time": "20:20"
+          },
+          "pair": "DOGE/USDT",
+          "type": "LONG",
+          "entry": "$0.1",
+          "exit": "$0.11",
+          "quantity": "500",
+          "pnl": {
+            "amount": "+$5.00",
+            "percent": "+0.5%"
+          },
+          "strategy": "-",
+          "rating": "⭐⭐⭐",
+          "editTarget": "/edit-trade/pro-win"
+        },
+        {
+          "id": "manual-win",
+          "date": {
+            "calendarDate": "2026-07-20",
+            "time": "09:30"
+          },
+          "pair": "BTC/USDT",
+          "type": "LONG",
+          "entry": "$100",
+          "exit": "$112",
+          "quantity": "10",
+          "pnl": {
+            "amount": "+$120.00",
+            "percent": "+12%"
+          },
+          "strategy": "Breakout",
+          "rating": "⭐⭐⭐⭐⭐",
+          "editTarget": "/edit-trade/manual-win"
+        },
+        {
+          "id": "csv-loss",
+          "date": {
+            "calendarDate": "2026-07-14",
+            "time": "14:15"
+          },
+          "pair": "ETH/USDT",
+          "type": "SHORT",
+          "entry": "$200",
+          "exit": "$209",
+          "quantity": "5",
+          "pnl": {
+            "amount": "$-45.00",
+            "percent": "-4.5%"
+          },
+          "strategy": "Mean Reversion",
+          "rating": "⭐⭐",
+          "editTarget": "/edit-trade/csv-loss"
+        },
+        {
+          "id": "manual-loss",
+          "date": {
+            "calendarDate": "2026-07-02",
+            "time": "11:10"
+          },
+          "pair": "ADA/USDT",
+          "type": "LONG",
+          "entry": "$1",
+          "exit": "$0.9",
+          "quantity": "100",
+          "pnl": {
+            "amount": "$-10.00",
+            "percent": "-1%"
+          },
+          "strategy": "Scalping",
+          "rating": "⭐",
+          "editTarget": "/edit-trade/manual-loss"
+        },
+        {
+          "id": "pro-breakeven",
+          "date": {
+            "calendarDate": "2026-06-07",
+            "time": "08:00"
+          },
+          "pair": "SOL/USDT",
+          "type": "LONG",
+          "entry": "$50",
+          "exit": "$50",
+          "quantity": "2",
+          "pnl": {
+            "amount": "+$0.000",
+            "percent": null
+          },
+          "strategy": "-",
+          "rating": "⭐⭐⭐",
+          "editTarget": "/edit-trade/pro-breakeven"
+        },
+        {
+          "id": "tradingview-win",
+          "date": {
+            "calendarDate": "2025-12-26",
+            "time": "16:45"
+          },
+          "pair": "XRP/USDT",
+          "type": "SHORT",
+          "entry": "$2",
+          "exit": "$1.7",
+          "quantity": "100",
+          "pnl": {
+            "amount": "+$30.00",
+            "percent": "+3%"
+          },
+          "strategy": "Momentum",
+          "rating": "⭐⭐⭐⭐",
+          "editTarget": "/edit-trade/tradingview-win"
+        },
+        {
+          "id": "csv-win",
+          "date": {
+            "calendarDate": "2024-01-10",
+            "time": "07:05"
+          },
+          "pair": "BNB/USDT",
+          "type": "SHORT",
+          "entry": "$300",
+          "exit": "$295",
+          "quantity": "5",
+          "pnl": {
+            "amount": "+$25.00",
+            "percent": "+2.5%"
+          },
+          "strategy": "Breakout",
+          "rating": "⭐⭐⭐⭐⭐",
+          "editTarget": "/edit-trade/csv-win"
+        }
+      ],
+      "summary": {
+        "ids": [
+          "tradingview-loss",
+          "pro-win",
+          "manual-win",
+          "csv-loss",
+          "manual-loss",
+          "pro-breakeven",
+          "tradingview-win",
+          "csv-win"
+        ],
+        "count": 8,
+        "collectionCount": 8,
+        "total": "+$124.00",
+        "empty": false
+      },
+      "strategyOptions": [
+        {
+          "value": "all",
+          "label": "All Strategies"
+        },
+        {
+          "value": "Breakout",
+          "label": "Breakout"
+        },
+        {
+          "value": "Mean Reversion",
+          "label": "Mean Reversion"
+        },
+        {
+          "value": "Momentum",
+          "label": "Momentum"
+        },
+        {
+          "value": "Scalping",
+          "label": "Scalping"
+        },
+        {
+          "value": "Custom Canonical",
+          "label": "⭐ Custom Canonical"
+        },
+        {
+          "value": "__add_custom__",
+          "label": "➕ Add Custom..."
+        }
+      ],
+      "controls": [
+        "all",
+        "all",
+        "date-desc",
+        "all",
+        "all",
+        "all",
+        "all",
+        "all",
+        "all"
+      ],
+      "applicationShellVisible": true,
+      "tradeHistoryVisible": true
+    },
+    "searches": {
+      "BTC/USDT": {
+        "ids": [
+          "manual-win"
+        ],
+        "count": 1,
+        "collectionCount": 8,
+        "total": "+$120.00",
+        "empty": false
+      },
+      "Breakout": {
+        "ids": [
+          "manual-win",
+          "csv-win"
+        ],
+        "count": 2,
+        "collectionCount": 8,
+        "total": "+$145.00",
+        "empty": false
+      },
+      "canonical CSV": {
+        "ids": [
+          "csv-loss",
+          "csv-win"
+        ],
+        "count": 2,
+        "collectionCount": 8,
+        "total": "$-20.00",
+        "empty": false
+      },
+      "extension": {
+        "ids": [
+          "tradingview-loss",
+          "tradingview-win"
+        ],
+        "count": 2,
+        "collectionCount": 8,
+        "total": "+$29.00",
+        "empty": false
+      }
+    },
+    "filters": {
+      "2026": {
+        "ids": [
+          "manual-win",
+          "csv-loss",
+          "manual-loss",
+          "pro-breakeven"
+        ],
+        "count": 4,
+        "collectionCount": 8,
+        "total": "+$65.00",
+        "empty": false
+      },
+      "Long Only": {
+        "ids": [
+          "pro-win",
+          "manual-win",
+          "manual-loss",
+          "pro-breakeven"
+        ],
+        "count": 4,
+        "collectionCount": 8,
+        "total": "+$115.00",
+        "empty": false
+      },
+      "Short Only": {
+        "ids": [
+          "tradingview-loss",
+          "csv-loss",
+          "tradingview-win",
+          "csv-win"
+        ],
+        "count": 4,
+        "collectionCount": 8,
+        "total": "+$9.00",
+        "empty": false
+      },
+      "Wins": {
+        "ids": [
+          "pro-win",
+          "manual-win",
+          "tradingview-win",
+          "csv-win"
+        ],
+        "count": 4,
+        "collectionCount": 8,
+        "total": "+$180.00",
+        "empty": false
+      },
+      "Losses": {
+        "ids": [
+          "tradingview-loss",
+          "csv-loss",
+          "manual-loss"
+        ],
+        "count": 3,
+        "collectionCount": 8,
+        "total": "$-56.00",
+        "empty": false
+      },
+      "Breakeven": {
+        "ids": [
+          "pro-breakeven"
+        ],
+        "count": 1,
+        "collectionCount": 8,
+        "total": "+$0.00",
+        "empty": false
+      },
+      "Breakout": {
+        "ids": [
+          "manual-win",
+          "csv-win"
+        ],
+        "count": 2,
+        "collectionCount": 8,
+        "total": "+$145.00",
+        "empty": false
+      },
+      "Momentum": {
+        "ids": [
+          "tradingview-loss",
+          "tradingview-win"
+        ],
+        "count": 2,
+        "collectionCount": 8,
+        "total": "+$29.00",
+        "empty": false
+      },
+      "July": {
+        "ids": [
+          "manual-win",
+          "csv-loss",
+          "manual-loss"
+        ],
+        "count": 3,
+        "collectionCount": 8,
+        "total": "+$65.00",
+        "empty": false
+      },
+      "Week 1": {
+        "ids": [
+          "manual-loss",
+          "pro-breakeven"
+        ],
+        "count": 2,
+        "collectionCount": 8,
+        "total": "$-10.00",
+        "empty": false
+      },
+      "Monday": {
+        "ids": [
+          "manual-win"
+        ],
+        "count": 1,
+        "collectionCount": 8,
+        "total": "+$120.00",
+        "empty": false
+      },
+      "London Session": {
+        "ids": [
+          "tradingview-loss",
+          "manual-win"
+        ],
+        "count": 2,
+        "collectionCount": 8,
+        "total": "+$119.00",
+        "empty": false
+      }
+    },
+    "dates": {
+      "from": {
+        "ids": [
+          "tradingview-loss",
+          "pro-win",
+          "manual-win",
+          "csv-loss",
+          "manual-loss"
+        ],
+        "count": 5,
+        "collectionCount": 8,
+        "total": "+$69.00",
+        "empty": false
+      },
+      "to": {
+        "ids": [
+          "csv-loss",
+          "manual-loss",
+          "pro-breakeven",
+          "tradingview-win",
+          "csv-win"
+        ],
+        "count": 5,
+        "collectionCount": 8,
+        "total": "+$0.00",
+        "empty": false
+      },
+      "range": {
+        "ids": [
+          "csv-loss",
+          "manual-loss"
+        ],
+        "count": 2,
+        "collectionCount": 8,
+        "total": "$-55.00",
+        "empty": false
+      }
+    },
+    "sorts": {
+      "Newest First": {
+        "ids": [
+          "tradingview-loss",
+          "pro-win",
+          "manual-win",
+          "csv-loss",
+          "manual-loss",
+          "pro-breakeven",
+          "tradingview-win",
+          "csv-win"
+        ],
+        "count": 8,
+        "collectionCount": 8,
+        "total": "+$124.00",
+        "empty": false
+      },
+      "Oldest First": {
+        "ids": [
+          "csv-win",
+          "tradingview-win",
+          "pro-breakeven",
+          "manual-loss",
+          "csv-loss",
+          "manual-win",
+          "pro-win",
+          "tradingview-loss"
+        ],
+        "count": 8,
+        "collectionCount": 8,
+        "total": "+$124.00",
+        "empty": false
+      },
+      "Highest P&L": {
+        "ids": [
+          "manual-win",
+          "tradingview-win",
+          "csv-win",
+          "pro-win",
+          "pro-breakeven",
+          "tradingview-loss",
+          "manual-loss",
+          "csv-loss"
+        ],
+        "count": 8,
+        "collectionCount": 8,
+        "total": "+$124.00",
+        "empty": false
+      },
+      "Lowest P&L": {
+        "ids": [
+          "csv-loss",
+          "manual-loss",
+          "tradingview-loss",
+          "pro-breakeven",
+          "pro-win",
+          "csv-win",
+          "tradingview-win",
+          "manual-win"
+        ],
+        "count": 8,
+        "collectionCount": 8,
+        "total": "+$124.00",
+        "empty": false
+      },
+      "By Pair": {
+        "ids": [
+          "manual-loss",
+          "tradingview-loss",
+          "csv-win",
+          "manual-win",
+          "pro-win",
+          "csv-loss",
+          "pro-breakeven",
+          "tradingview-win"
+        ],
+        "count": 8,
+        "collectionCount": 8,
+        "total": "+$124.00",
+        "empty": false
+      }
+    },
+    "detail": {
+      "fields": {
+        "Type": "LONG",
+        "P&L": "$120",
+        "Entry Price": "$100",
+        "Exit Price": "$112",
+        "Quantity": "10",
+        "Leverage": "1x",
+        "Date": "2026-07-20",
+        "Strategy": "Breakout",
+        "Timeframe": "1h",
+        "Emotion": "calm"
+      },
+      "notes": "Manual breakout at resistance"
+    },
+    "export": {
+      "downloads": [
+        {
+          "download": "vivek-trades-2026-08-05.csv",
+          "href": "blob:http://127.0.0.1:49367/d39aecab-a054-4c15-801e-7f5da3524283"
+        }
+      ],
+      "csv": "Date,Pair,Type,Entry,Exit,Qty,Leverage,P&L,Strategy,Fees,Notes\n2026-07-20,BTC/USDT,long,100,112,10,1,120,Breakout,0,\"Manual breakout at resistance\"\n2026-07-14,ETH/USDT,short,200,209,5,1,-45,Mean Reversion,0,\"Imported from canonical CSV\"\n2026-06-07,SOL/USDT,long,50,50,2,3,0,,0,\"Auto-saved from Pro Trading. Reason: manual\"\n2025-12-26,XRP/USDT,short,2,1.7,100,1,30,Momentum,0,\"TradingView overlay close\"\n2026-07-02,ADA/USDT,long,1,0.9,100,1,-10,Scalping,0,\"Manual range scalp\"\n2024-01-10,BNB/USDT,short,300,295,5,1,25,Breakout,0,\"Canonical CSV winner\"\n2027-08-28,DOGE/USDT,long,0.1,0.11,500,2,5,,0,\"Auto-saved from Pro Trading. Reason: take-profit\"\n2028-09-29,AVAX/USDT,short,40,41,1,1,-1,Momentum,0,\"TradingView stopped overlay\""
+    },
+    "browserHistory": {
+      "backToHistory": "/history",
+      "backToDashboard": "/tests/trade-history/tradeHistory.fixture.html",
+      "forwardToHistory": "/history",
+      "forwardToEdit": "/edit-trade/manual-win"
+    },
+    "boundary": {
+      "path": "/boundary-probe",
+      "headingVisible": true,
+      "messageVisible": true,
+      "controls": [
+        "Reload App",
+        "Try Again"
+      ],
+      "diagnostics": [
+        {
+          "kind": "runtime-exception",
+          "text": "Error: Synthetic unrelated child render failure\n    at SyntheticRenderError (http://127.0.0.1:49367/tests/trade-history/tradeHistory.fixture.jsx:59:9)\n    at renderWithHooks (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:11546:26)\n    at mountIndeterminateComponent (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:14924:21)\n    at beginWork (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:15912:22)\n    at HTMLUnknownElement.callCallback2 (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:3672:22)\n    at Object.invokeGuardedCallbackDev (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:3697:24)\n    at invokeGuardedCallback (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:3731:39)\n    at beginWork$1 (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:19763:15)\n    at performUnitOfWork (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:19196:20)\n    at workLoopSync (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:19135:13)"
+        },
+        {
+          "kind": "runtime-exception",
+          "text": "Error: Synthetic unrelated child render failure\n    at SyntheticRenderError (http://127.0.0.1:49367/tests/trade-history/tradeHistory.fixture.jsx:59:9)\n    at renderWithHooks (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:11546:26)\n    at mountIndeterminateComponent (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:14924:21)\n    at beginWork (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:15912:22)\n    at HTMLUnknownElement.callCallback2 (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:3672:22)\n    at Object.invokeGuardedCallbackDev (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:3697:24)\n    at invokeGuardedCallback (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:3731:39)\n    at beginWork$1 (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:19763:15)\n    at performUnitOfWork (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:19196:20)\n    at workLoopSync (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:19135:13)"
+        },
+        {
+          "kind": "console-error",
+          "text": "The above error occurred in the <SyntheticRenderError> component:\n\n    at SyntheticRenderError (http://127.0.0.1:49367/tests/trade-history/tradeHistory.fixture.jsx:59:9)\n    at RenderedRoute (http://127.0.0.1:49367/node_modules/.vite/deps/react-router-dom.js?v=8d506b7d:4120:5)\n    at Outlet (http://127.0.0.1:49367/node_modules/.vite/deps/react-router-dom.js?v=8d506b7d:4526:26)\n    at ErrorBoundary (http://127.0.0.1:49367/src/components/ErrorBoundary.jsx:7:5)\n    at main\n    at div\n    at Layout (http://127.0.0.1:49367/src/components/Layout.jsx:50:20)\n    at RenderedRoute (http://127.0.0.1:49367/node_modules/.vite/deps/react-router-dom.js?v=8d506b7d:4120:5)\n    at Routes (http://127.0.0.1:49367/node_modules/.vite/deps/react-router-dom.js?v=8d506b7d:4590:5)\n    at Router (http://127.0.0.1:49367/node_modules/.vite/deps/react-router-dom.js?v=8d506b7d:4533:15)\n    at BrowserRouter (http://127.0.0.1:49367/node_modules/.vite/deps/react-router-dom.js?v=8d506b7d:5271:5)\n\nReact will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary."
+        },
+        {
+          "kind": "console-error",
+          "text": "React Error Boundary caught: Error: Synthetic unrelated child render failure\n    at SyntheticRenderError (http://127.0.0.1:49367/tests/trade-history/tradeHistory.fixture.jsx:59:9)\n    at renderWithHooks (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:11546:26)\n    at mountIndeterminateComponent (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:14924:21)\n    at beginWork (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:15912:22)\n    at beginWork$1 (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:19751:22)\n    at performUnitOfWork (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:19196:20)\n    at workLoopSync (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:19135:13)\n    at renderRootSync (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:19114:15)\n    at recoverFromConcurrentError (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:18734:28)\n    at performSyncWorkOnRoot (http://127.0.0.1:49367/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=8d506b7d:18877:28) Object"
+        }
+      ]
+    }
+  },
+  "status": "passed"
+}

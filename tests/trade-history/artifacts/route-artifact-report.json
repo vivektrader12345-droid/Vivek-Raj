@@ -1,0 +1,11 @@
+{
+  "productionAssetIdentifier": "/assets/index-BqALrodG.js",
+  "postDeploymentAssetUrl": "https://vijaycontractor.space/assets/index-BqALrodG.js",
+  "checks": {
+    "netlifySpaRewrite": true,
+    "publicRedirectFallback": true,
+    "directHistoryResponse": 200,
+    "fixedHistoryMarkersPresent": true,
+    "visibleBoundaryMarkersPresent": true
+  }
+}

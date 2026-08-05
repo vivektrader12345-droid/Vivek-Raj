@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useAlerts } from '../context/AlertContext'
 import { useTheme } from '../context/ThemeContext'
@@ -16,6 +16,7 @@ function Layout() {
   const { alerts } = useAlerts()
   const { theme, toggleTheme } = useTheme()
   const { currency, toggleCurrency, exchangeRate } = useCurrency()
+  const location = useLocation()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
@@ -168,7 +169,7 @@ function Layout() {
           </button>
           <span className="text-gray-500 text-xs">1 USD = ₹{exchangeRate.toFixed(2)}</span>
         </div>
-        <ErrorBoundary>
+        <ErrorBoundary key={`${location.pathname}${location.search}`}>
           <Outlet />
         </ErrorBoundary>
       </main>
