@@ -1,14 +1,8 @@
 /**
  * AuthContext - Firebase Authentication + Firestore User Data
- * 
- * Features:
- * - Email/Password signup/login with email OTP verification
- * - Google Sign-In
- * - Per-user Firestore data (users/{uid}/)
- * - Auto-creates default data structure on signup
- * - Session persistence (user stays logged in)
- * - Clears all data from memory on logout
- * - blockAutoLogin flag for OTP flow
+ *
+ * Email/password sessions require a server-issued OTP claim for the current
+ * Firebase auth_time. Google sessions retain their existing behavior.
  */
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import {
@@ -58,93 +52,80 @@ function LoadingScreen() {
   )
 }
 
+function isGoogleSession(tokenResult) {
+  return tokenResult.claims.firebase?.sign_in_provider === 'google.com'
+}
+
+function hasCurrentOtpProof(tokenResult) {
+  const authTime = Number(tokenResult.claims.auth_time || 0)
+  const verifiedAuthTime = Number(tokenResult.claims.otp_auth_time || 0)
+  return authTime > 0 && verifiedAuthTime === authTime
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [userSettings, setUserSettings] = useState(null)
   const [loading, setLoading] = useState(true)
   const [needsVerification, setNeedsVerification] = useState(false)
   const [verificationEmail, setVerificationEmail] = useState('')
-  const [blockAutoLogin, setBlockAutoLogin] = useState(false)
 
-  // Listen to Firebase auth state changes
+  const hydrateUser = async (firebaseUser, profileOverrides = {}) => {
+    let profile = await getProfile(firebaseUser.uid)
+    if (!profile) {
+      const name = profileOverrides.fullName || firebaseUser.displayName || firebaseUser.email.split('@')[0]
+      profile = {
+        fullName: name,
+        email: firebaseUser.email,
+        avatar: (name || 'U').charAt(0).toUpperCase(),
+        photoURL: firebaseUser.photoURL || null,
+        emailVerified: true,
+      }
+      await createDefaultUserData(firebaseUser.uid, profile)
+    } else if (profile.emailVerified !== true) {
+      await updateProfileFS(firebaseUser.uid, { emailVerified: true })
+      profile = { ...profile, emailVerified: true }
+    }
+
+    const settings = await getSettings(firebaseUser.uid)
+    const userData = {
+      ...profile,
+      id: firebaseUser.uid,
+      uid: firebaseUser.uid,
+      emailVerified: true,
+    }
+    setUserSettings(settings)
+    setNeedsVerification(false)
+    setVerificationEmail('')
+    setUser(userData)
+    return userData
+  }
+
   useEffect(() => {
-    // Safety timeout — if Firestore hangs for >8s, stop loading anyway
-    const safetyTimer = setTimeout(() => {
-      setLoading(false)
-    }, 8000)
+    const safetyTimer = setTimeout(() => setLoading(false), 8000)
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       clearTimeout(safetyTimer)
-
-      // If OTP flow is active, don't auto-login
-      if (blockAutoLogin) {
-        setLoading(false)
-        return
-      }
-
       try {
-        if (firebaseUser) {
-          const isGoogleUser = firebaseUser.providerData.some(p => p.providerId === 'google.com')
-
-          // Load user profile from Firestore
-          const profile = await getProfile(firebaseUser.uid)
-
-          if (profile) {
-            // Check verification (Google users always verified)
-            const isVerified = isGoogleUser || firebaseUser.emailVerified || profile.emailVerified === true
-
-            if (!isVerified) {
-              setNeedsVerification(true)
-              setVerificationEmail(firebaseUser.email)
-              setUser(null)
-              setLoading(false)
-              return
-            }
-
-            // Load settings
-            const settings = await getSettings(firebaseUser.uid)
-            setUserSettings(settings)
-            setNeedsVerification(false)
-            setVerificationEmail('')
-            setUser({
-              ...profile,
-              id: firebaseUser.uid,
-              uid: firebaseUser.uid,
-              emailVerified: true,
-            })
-          } else {
-            // New user (Google sign-in first time) — create default data
-            const defaultProfile = {
-              fullName: firebaseUser.displayName || firebaseUser.email.split('@')[0],
-              email: firebaseUser.email,
-              avatar: (firebaseUser.displayName || firebaseUser.email || 'U').charAt(0).toUpperCase(),
-              photoURL: firebaseUser.photoURL || null,
-              emailVerified: isGoogleUser || firebaseUser.emailVerified,
-            }
-
-            await createDefaultUserData(firebaseUser.uid, defaultProfile)
-            const settings = await getSettings(firebaseUser.uid)
-            setUserSettings(settings)
-
-            if (!isGoogleUser && !firebaseUser.emailVerified) {
-              setNeedsVerification(true)
-              setVerificationEmail(firebaseUser.email)
-              setUser(null)
-            } else {
-              setNeedsVerification(false)
-              setUser({ id: firebaseUser.uid, uid: firebaseUser.uid, emailVerified: true, ...defaultProfile })
-            }
-          }
-        } else {
-          // User signed out — clear everything
+        if (!firebaseUser) {
           setUser(null)
           setUserSettings(null)
           setNeedsVerification(false)
           setVerificationEmail('')
+          return
         }
+
+        const tokenResult = await firebaseUser.getIdTokenResult()
+        if (!isGoogleSession(tokenResult) && !hasCurrentOtpProof(tokenResult)) {
+          setUser(null)
+          setUserSettings(null)
+          setNeedsVerification(true)
+          setVerificationEmail(firebaseUser.email || '')
+          return
+        }
+
+        await hydrateUser(firebaseUser)
       } catch (err) {
         console.error('Auth state error:', err)
-        // On any Firestore error, clear user and let app continue
         setUser(null)
         setUserSettings(null)
       } finally {
@@ -156,106 +137,45 @@ export function AuthProvider({ children }) {
       clearTimeout(safetyTimer)
       unsubscribe()
     }
-  }, [blockAutoLogin])
+  }, [])
 
-  // ==================== AUTH ACTIONS ====================
-
-  // Sign up with Email & Password
   const signup = async (fullName, email, password) => {
     const credential = await createUserWithEmailAndPassword(auth, email, password)
     await updateProfile(credential.user, { displayName: fullName })
-
-    // Send email verification
     await sendEmailVerification(credential.user)
-
-    // Create default Firestore data structure
-    const profile = {
-      fullName,
-      email,
-      avatar: fullName.charAt(0).toUpperCase(),
-      photoURL: null,
-      emailVerified: false,
-    }
-    await createDefaultUserData(credential.user.uid, profile)
-
-    // Don't set user — need OTP verification first
     setNeedsVerification(true)
     setVerificationEmail(email)
     return { needsVerification: true, email }
   }
 
-  // Login with Email & Password
-  const login = async (email, password) => {
-    const credential = await signInWithEmailAndPassword(auth, email, password)
-    const profile = await getProfile(credential.user.uid)
-    const isVerified = credential.user.emailVerified || (profile && profile.emailVerified === true)
-
-    if (!isVerified) {
-      setNeedsVerification(true)
-      setVerificationEmail(email)
-      throw new Error('Email not verified. Please verify your email first.')
-    }
-
-    const settings = await getSettings(credential.user.uid)
-    setUserSettings(settings)
-    const userData = { ...profile, id: credential.user.uid, uid: credential.user.uid, emailVerified: true }
-    setUser(userData)
-    return userData
-  }
-
-  // Verify credentials only (for OTP flow — no user state change)
   const verifyCredentials = async (email, password) => {
-    setBlockAutoLogin(true)
-    try {
-      const credential = await signInWithEmailAndPassword(auth, email, password)
-      await signOut(auth)
-      return { success: true, uid: credential.user.uid }
-    } catch (err) {
-      setBlockAutoLogin(false)
-      throw err
-    }
-  }
-
-  // Complete login after OTP verification
-  const completeLogin = async (email, password) => {
-    setBlockAutoLogin(false)
     const credential = await signInWithEmailAndPassword(auth, email, password)
-    const profile = await getProfile(credential.user.uid)
-    const settings = await getSettings(credential.user.uid)
-    setUserSettings(settings)
-    const userData = { ...profile, id: credential.user.uid, uid: credential.user.uid, emailVerified: true }
-    setUser(userData)
-    return userData
+    setUser(null)
+    setUserSettings(null)
+    setNeedsVerification(true)
+    setVerificationEmail(email)
+    return { success: true, uid: credential.user.uid }
   }
 
-  // Google Sign-In
+  const completeLogin = async (profileOverrides = {}) => {
+    const firebaseUser = auth.currentUser
+    if (!firebaseUser) throw new Error('Sign-in session expired. Please sign in again.')
+
+    const tokenResult = await firebaseUser.getIdTokenResult()
+    if (!isGoogleSession(tokenResult) && !hasCurrentOtpProof(tokenResult)) {
+      throw new Error('OTP verification is required for this sign-in session.')
+    }
+    return hydrateUser(firebaseUser, profileOverrides)
+  }
+
+  const login = async (email, password) => verifyCredentials(email, password)
+
   const signInWithGoogle = async () => {
     const result = await signInWithPopup(auth, googleProvider)
-    const firebaseUser = result.user
-    let profile = await getProfile(firebaseUser.uid)
-
-    if (!profile) {
-      // New Google user — create default data
-      profile = {
-        fullName: firebaseUser.displayName || firebaseUser.email.split('@')[0],
-        email: firebaseUser.email,
-        avatar: (firebaseUser.displayName || 'U').charAt(0).toUpperCase(),
-        photoURL: firebaseUser.photoURL || null,
-        emailVerified: true,
-      }
-      await createDefaultUserData(firebaseUser.uid, profile)
-    }
-
-    const settings = await getSettings(firebaseUser.uid)
-    setUserSettings(settings)
-    const userData = { ...profile, id: firebaseUser.uid, uid: firebaseUser.uid, emailVerified: true }
-    setUser(userData)
-    return userData
+    return hydrateUser(result.user)
   }
 
-  // Logout — clears all user data from memory
   const logout = async () => {
-    setBlockAutoLogin(false)
     await signOut(auth)
     setUser(null)
     setUserSettings(null)
@@ -263,27 +183,23 @@ export function AuthProvider({ children }) {
     setVerificationEmail('')
   }
 
-  // Update profile in Firestore
   const updateUserProfile = async (updates) => {
     if (!user) return
     await updateProfileFS(user.uid, updates)
-    setUser(prev => ({ ...prev, ...updates }))
+    setUser(previous => ({ ...previous, ...updates }))
   }
 
-  // Update settings in Firestore
   const updateUserSettings = async (settings) => {
     if (!user) return
     await updateSettingsFS(user.uid, settings)
-    setUserSettings(prev => ({ ...prev, ...settings }))
+    setUserSettings(previous => ({ ...previous, ...settings }))
   }
 
-  // Change password (send reset email)
   const changePassword = async () => {
     if (!user) return
     await sendPasswordResetEmail(auth, user.email)
   }
 
-  // Resend email verification
   const resendVerification = async () => {
     const currentUser = auth.currentUser
     if (currentUser && !currentUser.emailVerified) {
@@ -291,28 +207,17 @@ export function AuthProvider({ children }) {
     }
   }
 
-  // Check if email has been verified
   const checkVerification = async () => {
     const currentUser = auth.currentUser
     if (!currentUser) return false
     await currentUser.reload()
-    if (currentUser.emailVerified) {
-      setNeedsVerification(false)
-      const profile = await getProfile(currentUser.uid)
-      const settings = await getSettings(currentUser.uid)
-      setUserSettings(settings)
-      if (profile) {
-        setUser({ ...profile, id: currentUser.uid, uid: currentUser.uid, emailVerified: true })
-      }
-      return true
-    }
-    return false
+    const tokenResult = await currentUser.getIdTokenResult(true)
+    if (!isGoogleSession(tokenResult) && !hasCurrentOtpProof(tokenResult)) return false
+    await hydrateUser(currentUser)
+    return true
   }
 
-  // Loading screen with timeout feedback
-  if (loading) {
-    return <LoadingScreen />
-  }
+  if (loading) return <LoadingScreen />
 
   return (
     <AuthContext.Provider value={{

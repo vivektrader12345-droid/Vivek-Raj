@@ -23,9 +23,8 @@ function Login() {
   const [showOTPScreen, setShowOTPScreen] = useState(false)
   const [otpLoading, setOtpLoading] = useState(false)
   const [otpVerifying, setOtpVerifying] = useState(false)
-  const [savedPassword, setSavedPassword] = useState('')
   const [showPhoneVerify, setShowPhoneVerify] = useState(false)
-  const { login, verifyCredentials, completeLogin, signInWithGoogle } = useAuth()
+  const { verifyCredentials, completeLogin, signInWithGoogle } = useAuth()
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
@@ -39,10 +38,8 @@ function Login() {
 
     setLoading(true)
     try {
-      // Verify credentials WITHOUT setting user state
+      // Credentials remain authenticated while the server issues a session-bound OTP.
       await verifyCredentials(email.trim().toLowerCase(), password)
-      // Credentials valid — save password and send OTP
-      setSavedPassword(password)
       setLoading(false)
       setOtpLoading(true)
       const otpResult = await sendOTP(email.trim().toLowerCase())
@@ -111,7 +108,7 @@ function Login() {
         onVerified={async (phone) => {
           // Phone verified — complete login
           try {
-            await completeLogin(email.trim().toLowerCase(), savedPassword)
+            await completeLogin()
             navigate('/')
           } catch {
             window.location.href = '/'
@@ -152,10 +149,11 @@ function Login() {
                 if (result.success) {
                   // Email OTP verified — complete login
                   try {
-                    await completeLogin(email.trim().toLowerCase(), savedPassword)
+                    await completeLogin()
                     navigate('/')
-                  } catch {
-                    window.location.href = '/'
+                  } catch (completionError) {
+                    setError(completionError.message || 'Unable to complete login. Please try again.')
+                    setOtpVerifying(false)
                   }
                 } else {
                   setError(result.message)

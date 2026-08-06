@@ -19,7 +19,7 @@ function Signup() {
   const [verificationSent, setVerificationSent] = useState(false)
   const [checkingVerification, setCheckingVerification] = useState(false)
   const [showPhoneVerify, setShowPhoneVerify] = useState(false)
-  const { signup, signInWithGoogle, needsVerification, verificationEmail, resendVerification, checkVerification } = useAuth()
+  const { signup, completeLogin, signInWithGoogle, needsVerification, verificationEmail, resendVerification, checkVerification } = useAuth()
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
@@ -135,8 +135,13 @@ function Signup() {
                 setError('')
                 const result = await verifyOTP(displayEmail, code)
                 if (result.success) {
-                  // Email OTP verified — go to dashboard
-                  window.location.href = '/'
+                  try {
+                    await completeLogin({ fullName: fullName.trim() })
+                    window.location.href = '/'
+                  } catch (completionError) {
+                    setError(completionError.message || 'Unable to complete signup. Please try again.')
+                    setCheckingVerification(false)
+                  }
                 } else {
                   setError(result.message)
                   setCheckingVerification(false)

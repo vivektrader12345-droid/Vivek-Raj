@@ -27,6 +27,7 @@ import uuid
 import ccxt
 from firebase_admin import auth as firebase_auth
 from firebase_admin_setup import initialize_firebase_services
+from auth_policy import has_current_otp_proof
 from binance_sync import start_sync_for_user, stop_sync_for_user, get_sync_status, BinanceSyncService
 
 app = Flask(__name__)
@@ -82,6 +83,8 @@ def require_firebase_user(handler):
             uid = decoded.get('uid') or decoded.get('sub')
             if not uid:
                 return jsonify({'status': 'error', 'message': 'Invalid token'}), 401
+            if not has_current_otp_proof(decoded):
+                return jsonify({'status': 'error', 'message': 'OTP verification required'}), 403
         except Exception:
             return jsonify({'status': 'error', 'message': 'Invalid or expired token'}), 401
         requested_uid = kwargs.get('user_id')
@@ -94,7 +97,13 @@ def require_firebase_user(handler):
         return handler(*args, **kwargs)
     return wrapped
 
-# Secure TradingView webhook intelligence APIs (legacy routes remain unchanged).
+# Secure OTP endpoints keep codes and verification state server-side.
+from otp_auth import create_otp_blueprint
+
+if 'otp_auth' not in app.blueprints:
+    app.register_blueprint(create_otp_blueprint(db, firebase_app=firebase_app))
+
+# Secure TradingView webhook intelligence APIs.
 from webhook_intelligence import create_webhook_blueprint
 
 if not app.config.get('MAX_CONTENT_LENGTH'):

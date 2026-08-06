@@ -24,6 +24,8 @@ from functools import wraps
 from flask import Blueprint, g, jsonify, request
 from firebase_admin import auth, firestore
 
+from auth_policy import has_current_otp_proof
+
 
 MAX_PAYLOAD_BYTES = 256 * 1024
 MAX_FETCH = 500
@@ -902,6 +904,12 @@ def create_webhook_blueprint(db, base_url=None, firebase_app=None):
                         "invalid_token",
                         "The Firebase bearer token is invalid",
                         401,
+                    )
+                if not has_current_otp_proof(decoded):
+                    return _error(
+                        "otp_required",
+                        "Complete OTP verification for this sign-in session",
+                        403,
                     )
                 g.auth_uid = str(uid)
             except auth.ExpiredIdTokenError:

@@ -1,32 +1,44 @@
 // Firestore Security Rules
-// Users can ONLY read/write their own data
-// Deploy: Firebase Console → Firestore → Rules → Paste & Publish
+// Password sessions must present a server-issued OTP proof for their current login.
 
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function hasCurrentOtpProof() {
+      return request.auth.token.firebase.sign_in_provider == 'google.com'
+        || (request.auth.token.firebase.sign_in_provider == 'password'
+          && 'otp_auth_time' in request.auth.token
+          && request.auth.token.otp_auth_time == request.auth.token.auth_time);
+    }
 
-    // User's main document (profile)
+    function isAuthorizedOwner(userId) {
+      return request.auth != null
+        && request.auth.uid == userId
+        && hasCurrentOtpProof();
+    }
+
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isAuthorizedOwner(userId);
 
-      // All subcollections under a user (trades, strategies, alerts, watchlist, journal)
       match /{subcollection}/{docId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if isAuthorizedOwner(userId);
       }
 
-      // Nested data collection (settings)
       match /data/{docId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if isAuthorizedOwner(userId);
       }
     }
 
-    // OTP collection (used during signup verification)
-    match /otps/{email} {
-      allow read, write: if request.auth != null;
+    // OTP challenges are accessible only through the Firebase Admin backend.
+    match /otp_challenges/{userId} {
+      allow read, write: if false;
     }
 
-    // Block everything else
+    // Deny the retired client-controlled OTP collection explicitly.
+    match /otps/{document=**} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

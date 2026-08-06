@@ -86,7 +86,10 @@ class ProtectedWebhookAuthenticationTests(unittest.TestCase):
 
     @patch("webhook_intelligence.auth.verify_id_token")
     def test_valid_token_uses_revocation_check_and_verified_uid(self, verify):
-        verify.return_value = {"uid": "synthetic-user"}
+        verify.return_value = {
+            "uid": "synthetic-user",
+            "firebase": {"sign_in_provider": "google.com"},
+        }
 
         response = self.get()
 
@@ -94,6 +97,32 @@ class ProtectedWebhookAuthenticationTests(unittest.TestCase):
         verify.assert_called_once_with(
             "synthetic-token", app=self.firebase_app, check_revoked=True
         )
+
+    @patch("webhook_intelligence.auth.verify_id_token")
+    def test_password_session_requires_current_otp_proof(self, verify):
+        verify.return_value = {
+            "uid": "synthetic-user",
+            "auth_time": 100,
+            "firebase": {"sign_in_provider": "password"},
+        }
+
+        response = self.get()
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()["error"]["code"], "otp_required")
+
+    @patch("webhook_intelligence.auth.verify_id_token")
+    def test_password_session_accepts_exact_auth_time_proof(self, verify):
+        verify.return_value = {
+            "uid": "synthetic-user",
+            "auth_time": 100,
+            "otp_auth_time": 100,
+            "firebase": {"sign_in_provider": "password"},
+        }
+
+        response = self.get()
+
+        self.assertEqual(response.status_code, 200)
 
     @patch("webhook_intelligence.auth.verify_id_token")
     def test_missing_and_malformed_headers_are_distinct_and_not_verified(self, verify):
@@ -183,7 +212,10 @@ class ProtectedWebhookAuthenticationTests(unittest.TestCase):
 
     @patch("webhook_intelligence.auth.verify_id_token")
     def test_webhook_base_url_supports_local_and_render_origins(self, verify):
-        verify.return_value = {"uid": "synthetic-url-user"}
+        verify.return_value = {
+            "uid": "synthetic-url-user",
+            "firebase": {"sign_in_provider": "google.com"},
+        }
         cases = (
             ("http://localhost:5000///", "http://localhost:5000/webhook/v1/"),
             (
