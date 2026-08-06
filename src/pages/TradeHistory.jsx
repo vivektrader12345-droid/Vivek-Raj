@@ -32,6 +32,8 @@ function TradeHistory() {
   const [sortBy, setSortBy] = useState('date-desc')
   const [selectedTradeSource, setSelectedTradeSource] = useState(null)
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false)
+  const [deletingTradeId, setDeletingTradeId] = useState(null)
+  const [deletingAll, setDeletingAll] = useState(false)
 
   const historyTrades = useMemo(() => normalizeTradesForHistory(trades), [trades])
   const selectedTrade = useMemo(
@@ -56,17 +58,35 @@ function TradeHistory() {
     toDate: filterToDate,
   }, sortBy), [historyTrades, searchTerm, filterType, filterResult, filterStrategy, filterMonth, filterYear, filterWeek, filterDay, filterSession, filterFromDate, filterToDate, sortBy])
 
-  const handleDelete = (id, pair) => {
-    if (window.confirm(`Delete trade for ${pair}?`)) {
-      deleteTrade(id)
+  const handleDelete = async (id, pair) => {
+    if (deletingTradeId !== null || deletingAll) return
+    if (!window.confirm(`Delete trade for ${pair}?`)) return
+
+    setDeletingTradeId(id)
+    try {
+      await deleteTrade(id)
       toast.success('Trade deleted')
+    } catch (error) {
+      console.error('Trade deletion failed:', error)
+      toast.error(error?.message || 'Unable to delete trade')
+    } finally {
+      setDeletingTradeId(current => current === id ? null : current)
     }
   }
 
-  const handleDeleteAll = () => {
-    deleteAllTrades()
-    setShowDeleteAllConfirm(false)
-    toast.success('All trades deleted')
+  const handleDeleteAll = async () => {
+    if (deletingAll || deletingTradeId !== null) return
+    setDeletingAll(true)
+    try {
+      const deleted = await deleteAllTrades()
+      setShowDeleteAllConfirm(false)
+      toast.success(deleted === 1 ? '1 trade deleted' : `${deleted} trades deleted`)
+    } catch (error) {
+      console.error('Delete all trades failed:', error)
+      toast.error(error?.message || 'Unable to delete all trades')
+    } finally {
+      setDeletingAll(false)
+    }
   }
 
   const exportCSV = () => {
@@ -108,7 +128,7 @@ function TradeHistory() {
               <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 bg-[#0f3460] text-white rounded-lg hover:bg-[#0f3460]/80 transition-all text-sm">
                 <Download size={16} /> Export CSV
               </button>
-              <button onClick={() => setShowDeleteAllConfirm(true)} className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-all text-sm">
+              <button onClick={() => setShowDeleteAllConfirm(true)} disabled={deletingAll || deletingTradeId !== null} className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed">
                 <Trash size={16} /> Clear All
               </button>
             </>
@@ -128,8 +148,8 @@ function TradeHistory() {
         <div className="glass-card p-4 border-red-500/30 flex items-center justify-between">
           <p className="text-red-400 text-sm">Are you sure? This will permanently delete all {historyTrades.length} trades.</p>
           <div className="flex gap-2">
-            <button onClick={() => setShowDeleteAllConfirm(false)} className="px-3 py-1.5 text-sm rounded-lg border border-[#0f3460] text-gray-400 hover:text-white">Cancel</button>
-            <button onClick={handleDeleteAll} className="px-3 py-1.5 text-sm rounded-lg bg-red-500 text-white hover:bg-red-600">Delete All</button>
+            <button onClick={() => setShowDeleteAllConfirm(false)} disabled={deletingAll} className="px-3 py-1.5 text-sm rounded-lg border border-[#0f3460] text-gray-400 hover:text-white disabled:opacity-50">Cancel</button>
+            <button onClick={handleDeleteAll} disabled={deletingAll} className="px-3 py-1.5 text-sm rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed">{deletingAll ? 'Deleting…' : 'Delete All'}</button>
           </div>
         </div>
       )}
@@ -347,7 +367,7 @@ function TradeHistory() {
                         <Link to={`/edit-trade/${trade.identity.id}`} className="p-1.5 text-gray-400 hover:text-yellow-400 hover:bg-yellow-500/10 rounded-lg transition-all" title="Edit">
                           <Edit3 size={14} />
                         </Link>
-                        <button onClick={() => handleDelete(trade.identity.id, trade.display.pair)} className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all" title="Delete">
+                        <button onClick={() => handleDelete(trade.identity.id, trade.display.pair)} disabled={deletingTradeId !== null || deletingAll} className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed" title="Delete">
                           <Trash2 size={14} />
                         </button>
                       </div>

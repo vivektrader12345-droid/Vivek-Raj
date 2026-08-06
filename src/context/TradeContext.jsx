@@ -9,7 +9,7 @@ import { auth } from '../firebase'
 import {
   getTrades, addTrade as addTradeFS,
   updateTrade as updateTradeFS, deleteTrade as deleteTradeFS,
-  subscribeTrades, batchImportTrades,
+  deleteAllTrades as deleteAllTradesFS, subscribeTrades, batchImportTrades,
 } from '../services/firestoreService'
 import { parseImportCSV } from '../utils/csvImporter'
 
@@ -67,83 +67,70 @@ export function TradeProvider({ children }) {
   }, [user, uid])
 
   const addTrade = async (trade) => {
-    if (!user) return null
+    if (!user || !uid) throw new Error('You must be signed in to save a trade')
     const pnl = calculatePnL(trade)
     const pnlPercent = calculatePnLPercent(trade)
-    const newTrade = {
-      ...trade,
-      pnl,
-      pnlPercent,
-      userId: uid,
+    const newTrade = { ...trade, pnl, pnlPercent, userId: uid }
+
+    try {
+      setTradeError(null)
+      const docId = await addTradeFS(uid, newTrade)
+      return { ...newTrade, id: docId }
+    } catch (error) {
+      setTradeError(error?.message || 'Unable to save trade')
+      throw error
     }
-    const docId = await addTradeFS(uid, newTrade)
-    return { ...newTrade, id: docId }
   }
 
   const updateTrade = async (id, updatedData) => {
-    if (!user) return
-    const existing = trades.find(t => t.id === id)
-    if (!existing) return
+    if (!user || !uid) throw new Error('You must be signed in to update a trade')
+    const existing = trades.find(trade => trade.id === id)
+    if (!existing) throw new Error('Trade not found')
     const merged = { ...existing, ...updatedData }
     const pnl = calculatePnL(merged)
     const pnlPercent = calculatePnLPercent(merged)
-    await updateTradeFS(uid, id, { ...updatedData, pnl, pnlPercent })
+
+    try {
+      setTradeError(null)
+      await updateTradeFS(uid, id, { ...updatedData, pnl, pnlPercent })
+      return { ...merged, pnl, pnlPercent, id }
+    } catch (error) {
+      setTradeError(error?.message || 'Unable to update trade')
+      throw error
+    }
   }
 
   const deleteTrade = async (id) => {
-    if (!user || !id) return
+    if (!user || !uid) throw new Error('You must be signed in to delete a trade')
+    if (!id) throw new Error('Trade ID is required')
+
     try {
-      const { collection: col, getDocs, deleteDoc: delDoc, doc: docRef } = await import('firebase/firestore')
-      const { db: fireDb } = await import('../firebase')
-
-      // Get ALL trades and find the one matching this id
-      const tradesRef = col(fireDb, 'users', uid, 'trades')
-      const snap = await getDocs(tradesRef)
-
-      let deleted = false
-      for (const docSnap of snap.docs) {
-        if (docSnap.id === id || docSnap.data().tradeId === id || docSnap.data().id === id) {
-          await delDoc(docSnap.ref)
-          deleted = true
-          break
-        }
-      }
-
-      if (!deleted) {
-        // Last resort — try direct delete
-        await delDoc(docRef(fireDb, 'users', uid, 'trades', id))
-      }
-
-      // Force update local state
-      setTrades(prev => prev.filter(t => t.id !== id))
-    } catch (err) {
-      console.error('Delete failed:', err)
-      // Force remove from UI anyway
-      setTrades(prev => prev.filter(t => t.id !== id))
+      setTradeError(null)
+      await deleteTradeFS(uid, id)
+      setTrades(previous => previous.filter(trade => trade.id !== id))
+      return true
+    } catch (error) {
+      setTradeError(error?.message || 'Unable to delete trade')
+      throw error
     }
   }
 
   const deleteAllTrades = async () => {
-    if (!user) return
+    if (!user || !uid) throw new Error('You must be signed in to delete trades')
+
     try {
-      // Direct Firestore batch delete — most reliable
-      const { collection, getDocs, writeBatch } = await import('firebase/firestore')
-      const { db } = await import('../firebase')
-      const tradesRef = collection(db, 'users', uid, 'trades')
-      const snap = await getDocs(tradesRef)
-      if (snap.empty) {
-        setTrades([])
-        return
+      setTradeError(null)
+      const deleted = await deleteAllTradesFS(uid)
+      setTrades([])
+      return deleted
+    } catch (error) {
+      const deletedTradeIds = Array.isArray(error?.deletedTradeIds) ? error.deletedTradeIds : []
+      if (deletedTradeIds.length > 0) {
+        const deletedIds = new Set(deletedTradeIds)
+        setTrades(previous => previous.filter(trade => !deletedIds.has(trade.id)))
       }
-      const { writeBatch: createBatch } = await import('firebase/firestore')
-      const batch = writeBatch(db)
-      snap.docs.forEach(docSnap => batch.delete(docSnap.ref))
-      await batch.commit()
-      setTrades([])
-    } catch (err) {
-      console.error('Delete all error:', err)
-      // Force clear local state anyway
-      setTrades([])
+      setTradeError(error?.message || 'Unable to delete all trades')
+      throw error
     }
   }
 

@@ -42,6 +42,7 @@ function AddTrade() {
   const navigate = useNavigate()
   const { id } = useParams()
   const isEditing = Boolean(id)
+  const [saving, setSaving] = useState(false)
 
   const [showCustomStrategy, setShowCustomStrategy] = useState(false)
   const [customStrategies, setCustomStrategies] = useState(() => {
@@ -214,8 +215,9 @@ function AddTrade() {
 
   const previewPnL = calculatePreviewPnL()
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
+    if (saving) return
 
     if (!form.pair) {
       toast.error('Please select a trading pair')
@@ -234,15 +236,22 @@ function AddTrade() {
       return
     }
 
-    if (isEditing) {
-      updateTrade(id, form)
-      toast.success('Trade updated successfully!')
-    } else {
-      addTrade(form)
-      toast.success('Trade added successfully! 🎉')
+    setSaving(true)
+    try {
+      if (isEditing) {
+        await updateTrade(id, form)
+        toast.success('Trade updated successfully!')
+      } else {
+        await addTrade(form)
+        toast.success('Trade added successfully! 🎉')
+      }
+      navigate('/history')
+    } catch (error) {
+      console.error('Trade save failed:', error)
+      toast.error(error?.message || 'Unable to save trade. Please try again.')
+    } finally {
+      setSaving(false)
     }
-
-    navigate('/history')
   }
 
   const handleReset = () => {
@@ -645,11 +654,11 @@ function AddTrade() {
 
         {/* Buttons */}
         <div className="flex gap-4">
-          <button type="button" onClick={handleReset} className="flex-1 py-3 rounded-xl border border-[#0f3460] text-gray-400 hover:text-white hover:border-gray-400 transition-all font-medium">
+          <button type="button" onClick={handleReset} disabled={saving} className="flex-1 py-3 rounded-xl border border-[#0f3460] text-gray-400 hover:text-white hover:border-gray-400 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed">
             Reset Form
           </button>
-          <button type="submit" className="flex-[2] btn-primary">
-            {isEditing ? '💾 Update Trade' : '✅ Save Trade'}
+          <button type="submit" disabled={saving} className="flex-[2] btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
+            {saving ? 'Saving…' : isEditing ? '💾 Update Trade' : '✅ Save Trade'}
           </button>
         </div>
       </form>

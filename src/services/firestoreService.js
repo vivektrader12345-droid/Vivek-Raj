@@ -13,6 +13,7 @@ import {
   onSnapshot, serverTimestamp, writeBatch
 } from 'firebase/firestore'
 import { db } from '../firebase'
+import { chunkForFirestore, processFirestoreBatches } from '../utils/firestoreBatching'
 
 // ==================== HELPERS ====================
 
@@ -24,6 +25,9 @@ const userCollection = (uid, collectionName) => collection(db, 'users', uid, col
 
 /** Get specific document in a subcollection */
 const userSubDoc = (uid, collectionName, docId) => doc(db, 'users', uid, collectionName, docId)
+
+/** Never allow a stored id field to override Firestore's authoritative document ID. */
+const withDocumentId = (snapshot) => ({ ...snapshot.data(), id: snapshot.id })
 
 // ==================== PROFILE ====================
 
@@ -73,12 +77,12 @@ export async function getTrades(uid) {
   try {
     const q = query(userCollection(uid, 'trades'), orderBy('createdAt', 'desc'))
     const snap = await getDocs(q)
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    return snap.docs.map(withDocumentId)
   } catch (err) {
     // Fallback: no orderBy (avoids missing index errors)
     console.warn('getTrades fallback (no index):', err.message)
     const snap = await getDocs(userCollection(uid, 'trades'))
-    const trades = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const trades = snap.docs.map(withDocumentId)
     trades.sort((a, b) => {
       const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt || 0)
       const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt || 0)
@@ -108,6 +112,31 @@ export async function deleteTrade(uid, tradeId) {
   await deleteDoc(userSubDoc(uid, 'trades', tradeId))
 }
 
+export async function deleteAllTrades(uid) {
+  const snapshot = await getDocs(userCollection(uid, 'trades'))
+
+  try {
+    return await processFirestoreBatches(snapshot.docs, async (documents) => {
+      const batch = writeBatch(db)
+      documents.forEach(document => batch.delete(document.ref))
+      await batch.commit()
+    })
+  } catch (error) {
+    const deletedCount = Number.isInteger(error?.completedCount) ? error.completedCount : 0
+    const totalCount = Number.isInteger(error?.totalCount) ? error.totalCount : snapshot.docs.length
+    const message = deletedCount > 0
+      ? `${deletedCount} of ${totalCount} trades were deleted before an error occurred. Retry to delete the remaining trades.`
+      : 'No trades were deleted. Please retry.'
+    const deletionError = new Error(message)
+    deletionError.name = 'PartialTradeDeletionError'
+    deletionError.deletedCount = deletedCount
+    deletionError.totalCount = totalCount
+    deletionError.deletedTradeIds = (error?.completedItems || []).map(document => document.id)
+    deletionError.cause = error?.cause || error
+    throw deletionError
+  }
+}
+
 /**
  * Subscribe to trades in real-time
  */
@@ -115,7 +144,7 @@ export function subscribeTrades(uid, callback, onError = (error) => console.erro
   // Don't use orderBy to avoid missing field errors — sort on client side
   const tradesRef = collection(db, 'users', uid, 'trades')
   return onSnapshot(tradesRef, (snap) => {
-    const trades = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const trades = snap.docs.map(withDocumentId)
     // Sort by createdAt descending (client-side)
     trades.sort((a, b) => {
       const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt || 0)
@@ -133,7 +162,7 @@ export async function getStrategies(uid) {
   try {
     const q = query(userCollection(uid, 'strategies'), orderBy('createdAt', 'desc'))
     const snap = await getDocs(q)
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    return snap.docs.map(withDocumentId)
   } catch (err) {
     // Fallback: no orderBy (avoids missing index errors)
     console.warn('getStrategies fallback (no index):', err.message)
@@ -174,7 +203,7 @@ export async function getAlerts(uid) {
   try {
     const q = query(userCollection(uid, 'alerts'), orderBy('createdAt', 'desc'))
     const snap = await getDocs(q)
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    return snap.docs.map(withDocumentId)
   } catch (err) {
     // Fallback: no orderBy (avoids missing index errors)
     console.warn('getAlerts fallback (no index):', err.message)
@@ -227,7 +256,7 @@ export function subscribeAlerts(uid, callback, onError = (error) => console.erro
 export async function getWatchlist(uid) {
   const q = query(userCollection(uid, 'watchlist'))
   const snap = await getDocs(q)
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  return snap.docs.map(withDocumentId)
 }
 
 export async function addToWatchlist(uid, item) {
@@ -248,7 +277,7 @@ export async function getJournalEntries(uid) {
   try {
     const q = query(userCollection(uid, 'journal'), orderBy('createdAt', 'desc'))
     const snap = await getDocs(q)
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    return snap.docs.map(withDocumentId)
   } catch (err) {
     // Fallback: no orderBy (avoids missing index errors)
     console.warn('getJournalEntries fallback (no index):', err.message)
@@ -322,9 +351,11 @@ export async function deleteAllUserData(uid) {
   const collections = ['trades', 'strategies', 'alerts', 'watchlist', 'journal']
   for (const col of collections) {
     const snap = await getDocs(userCollection(uid, col))
-    const batch = writeBatch(db)
-    snap.docs.forEach(d => batch.delete(d.ref))
-    if (snap.docs.length > 0) await batch.commit()
+    for (const documents of chunkForFirestore(snap.docs)) {
+      const batch = writeBatch(db)
+      documents.forEach(document => batch.delete(document.ref))
+      await batch.commit()
+    }
   }
   // Delete settings
   await deleteDoc(doc(db, 'users', uid, 'data', 'settings'))
