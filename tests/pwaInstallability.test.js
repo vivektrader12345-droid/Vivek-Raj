@@ -160,6 +160,54 @@ test('Chromium reports an active service worker and no installability errors', {
     })
     await client.send('Page.navigate', { url: `http://127.0.0.1:${previewPort}/` })
     await waitFor(client, "document.readyState === 'complete'")
+    await waitFor(client, "Boolean(document.querySelector('[data-pwa-install]'))")
+    const installControl = await client.evaluate(`(async () => {
+      const button = document.querySelector('[data-pwa-install]')
+      const rect = button?.getBoundingClientRect()
+      const ancestors = []
+      for (let element = button; element; element = element.parentElement) ancestors.push(element)
+      const ancestorStyles = ancestors.map(element => getComputedStyle(element))
+      const intersectionRatio = button ? await new Promise(resolve => {
+        const observer = new IntersectionObserver(entries => {
+          resolve(entries[0]?.intersectionRatio || 0)
+          observer.disconnect()
+        }, { threshold: [1] })
+        observer.observe(button)
+      }) : 0
+      const points = rect ? [0.15, 0.5, 0.85].flatMap(xRatio =>
+        [0.25, 0.5, 0.75].map(yRatio => [
+          rect.left + rect.width * xRatio,
+          rect.top + rect.height * yRatio,
+        ]),
+      ) : []
+      const allPointsReachButton = points.length === 9 && points.every(([x, y]) => {
+        const target = document.elementFromPoint(x, y)
+        return target && (target === button || button.contains(target))
+      })
+      const ancestorsVisible = ancestorStyles.every(style =>
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        style.contentVisibility !== 'hidden' &&
+        style.pointerEvents !== 'none' &&
+        Number(style.opacity) > 0 &&
+        !/opacity\\(0(?:\\D|$)/i.test(style.filter)
+      )
+      const checks = {
+        browserVisibility: Boolean(button?.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })),
+        hasSize: Boolean(rect && rect.width > 0 && rect.height > 0),
+        insideViewport: Boolean(rect && rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight),
+        fullyIntersecting: intersectionRatio >= 0.999,
+        ancestorsVisible,
+        allPointsReachButton,
+      }
+      return {
+        text: button?.textContent?.trim(),
+        visible: Object.values(checks).every(Boolean),
+        checks,
+      }
+    })()`)
+    assert.equal(installControl.text, 'Download App')
+    assert.equal(installControl.visible, true, JSON.stringify(installControl.checks))
     await waitFor(client, "Boolean(navigator.serviceWorker) && (async () => Boolean((await navigator.serviceWorker.ready).active))()")
     await waitFor(client, 'Boolean(navigator.serviceWorker.controller)')
 
