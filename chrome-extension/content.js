@@ -12,9 +12,12 @@
 
   const EVENT_SOURCE = 'vivek-marco-trader-extension';
   const CAPTURE_INTERVAL_MS = 1500;
-  const CLOSE_CONFIRMATION_MISSES = 3;
+  const CLOSE_CONFIRMATION_MISSES = 5;
+  const CLOSE_CONFIRMATION_DURATION_MS = 7500;
   const CANVAS_HEARTBEAT_MAX_AGE_MS = 4000;
   const ACTIVE_STORAGE_KEY = 'activeChartTrade';
+  const DOCUMENT_STARTED_AT = performance.timeOrigin || Date.now();
+  const DOCUMENT_GENERATION = String(DOCUMENT_STARTED_AT);
 
   let isConnected = false;
   let started = false;
@@ -23,8 +26,9 @@
   let observerTimer = null;
   let activeSnapshot = null;
   let missCount = 0;
+  let firstMissAt = null;
+  let closePending = false;
   let closureInFlight = false;
-  let pendingNextSnapshot = null;
   let canvasItems = [];
   let canvasHeartbeatAt = 0;
   let lastDataHash = '';
@@ -331,13 +335,13 @@
     return { snapshot, marketPrice, priceRange };
   }
 
-  function samePosition(first, second) {
-    if (!first || !second) return false;
-    const tolerance = Math.max(Math.abs(first.entryPrice || 0) * 0.00001, 0.0000001);
-    return first.symbol === second.symbol
-      && first.side === second.side
-      && Math.abs(first.entryPrice - second.entryPrice) <= tolerance
-      && Math.abs(first.quantity - second.quantity) <= 0.0000001;
+  function isUninterruptedScaleOrEdit(first, second, context, now) {
+    if (!window.VMTExtensionCore.sameChartContext(first, context) || first.side !== second.side) return false;
+    if (first.documentGeneration !== DOCUMENT_GENERATION) return false;
+    const lastSeenAt = Date.parse(first.lastSeenAt || '');
+    if (!Number.isFinite(lastSeenAt) || now - lastSeenAt > CAPTURE_INTERVAL_MS * 3) return false;
+    const entryTolerance = Math.max(Math.abs(first.entryPrice || 0) * 0.00001, 0.0000001);
+    return Math.abs(first.entryPrice - second.entryPrice) <= entryTolerance;
   }
 
   function makeActiveSnapshot(snapshot) {
@@ -349,6 +353,7 @@
       firstSeenAt,
       lastSeenAt: firstSeenAt,
       observations: 1,
+      documentGeneration: DOCUMENT_GENERATION,
     };
   }
 
@@ -376,42 +381,8 @@
     return price >= range.min - padding && price <= range.max + padding;
   }
 
-  function calculateCloseReason(snapshot, exitPrice) {
-    if (!Number.isFinite(exitPrice)) return null;
-    const tolerance = Math.max(Math.abs(snapshot.entryPrice) * 0.00025, 0.0000001);
-    if (Number.isFinite(snapshot.stopLoss) && Math.abs(exitPrice - snapshot.stopLoss) <= tolerance) return 'stop_loss_hit';
-    if (Number.isFinite(snapshot.takeProfit) && Math.abs(exitPrice - snapshot.takeProfit) <= tolerance) return 'take_profit_hit';
-    return 'manual_or_market_close';
-  }
-
-  function buildCompletedTrade(snapshot, exitPrice) {
-    const exitDate = new Date().toISOString();
-    const entryDate = snapshot.firstSeenAt || null;
-    const durationMs = entryDate ? Math.max(0, Date.parse(exitDate) - Date.parse(entryDate)) : null;
-    const pnlPercent = Number.isFinite(exitPrice) && Number.isFinite(snapshot.entryPrice) && snapshot.entryPrice !== 0
-      ? ((snapshot.side === 'sell' ? snapshot.entryPrice - exitPrice : exitPrice - snapshot.entryPrice) / snapshot.entryPrice) * 100
-      : null;
-    const risk = Math.abs(snapshot.entryPrice - snapshot.stopLoss);
-    const reward = Math.abs(snapshot.takeProfit - snapshot.entryPrice);
-
-    return {
-      ...snapshot,
-      exitPrice: Number.isFinite(exitPrice) ? exitPrice : null,
-      exitPriceSource: Number.isFinite(exitPrice) ? 'chart_price_at_overlay_close' : null,
-      pnlPercent: Number.isFinite(pnlPercent) ? Number(pnlPercent.toFixed(4)) : null,
-      riskRewardRatio: risk > 0 ? Number((reward / risk).toFixed(4)) : null,
-      entryDate,
-      entryTimeSource: 'first_observed_on_chart',
-      exitDate,
-      date: exitDate.slice(0, 10),
-      duration: durationMs,
-      durationMs,
-      status: 'closed',
-      positionStatus: 'closed',
-      recordType: 'history',
-      closeReason: calculateCloseReason(snapshot, exitPrice),
-      capturedAt: exitDate,
-    };
+  function buildCompletedTrade(snapshot) {
+    return window.VMTExtensionCore.buildSafeCompletedTrade(snapshot);
   }
 
   function buildOpenTrade(snapshot) {
@@ -518,22 +489,22 @@
     });
   }
 
-  function finalizeActiveSnapshot(exitPrice, nextSnapshot = null) {
+  function finalizeActiveSnapshot() {
     if (!activeSnapshot || closureInFlight) return;
     closureInFlight = true;
-    pendingNextSnapshot = nextSnapshot;
-    const completed = buildCompletedTrade(activeSnapshot, exitPrice);
+    const completed = buildCompletedTrade(activeSnapshot);
 
     sendCapturedData({ history: [completed], capturedAt: Date.now() }, true, (result) => {
       closureInFlight = false;
       if (Number(result.synced) > 0 && Number(result.failed) === 0) {
-        const next = pendingNextSnapshot;
-        pendingNextSnapshot = null;
-        activeSnapshot = next ? makeActiveSnapshot(next) : null;
+        activeSnapshot = null;
         missCount = 0;
+        firstMissAt = null;
+        closePending = false;
         persistActiveSnapshot();
         saveDiagnostics({
-          overlayActive: Boolean(activeSnapshot),
+          overlayActive: false,
+          closePending: false,
           lastCompletedAt: completed.exitDate,
           lastCompletedTradeId: completed.tradeId,
           missingScans: 0,
@@ -554,46 +525,73 @@
 
     if (snapshot) {
       missCount = 0;
+      firstMissAt = null;
+      closePending = false;
       if (!activeSnapshot) {
         activeSnapshot = makeActiveSnapshot(snapshot);
-      } else if (samePosition(activeSnapshot, snapshot)) {
+      } else if (isUninterruptedScaleOrEdit(activeSnapshot, snapshot, context, now)) {
+        // Preserve identity only for uninterrupted same-entry observations, edits, or scaling.
         activeSnapshot = {
           ...activeSnapshot,
           ...snapshot,
           firstSeenAt: activeSnapshot.firstSeenAt,
           tradeId: activeSnapshot.tradeId,
+          documentGeneration: DOCUMENT_GENERATION,
           observations: Number(activeSnapshot.observations || 0) + 1,
           lastSeenAt: new Date().toISOString(),
         };
-      } else if (Number(activeSnapshot.observations || 0) >= 2) {
-        if (activeSnapshot.openSyncedAt) {
-          finalizeActiveSnapshot(detected.marketPrice, snapshot);
-        } else {
-          activeSnapshot = makeActiveSnapshot(snapshot);
-        }
       } else {
+        // A chart switch, direction change, reload-gap edit, or new entry is not
+        // proof that the prior trade closed. Start a distinct local identity.
+        if (activeSnapshot.openSyncedAt) {
+          saveDiagnostics({ lastError: 'A distinct overlay appeared without an observed close. The prior trade was left open and a new trade identity was started.' });
+        }
         activeSnapshot = makeActiveSnapshot(snapshot);
       }
       persistActiveSnapshot();
     } else if (healthy && activeSnapshot && !closureInFlight) {
-      const sameContext = activeSnapshot.symbol === context.symbol && (!activeSnapshot.timeframe || !context.timeframe || activeSnapshot.timeframe === context.timeframe);
-      const overlayPricesVisible = [activeSnapshot.entryPrice, activeSnapshot.stopLoss, activeSnapshot.takeProfit]
-        .some((price) => priceWithinRange(price, detected.priceRange));
-      if (sameContext && overlayPricesVisible && Number(activeSnapshot.observations || 0) >= 2) {
+      const sameContext = window.VMTExtensionCore.sameChartContext(activeSnapshot, context);
+      const overlayPricesInView = [activeSnapshot.entryPrice, activeSnapshot.stopLoss, activeSnapshot.takeProfit]
+        .every((price) => priceWithinRange(price, detected.priceRange));
+      const reliableMissingScan = canvasHealthy && sameContext && overlayPricesInView && !detected.incomplete;
+
+      if (reliableMissingScan) {
+        if (firstMissAt === null) firstMissAt = now;
         missCount += 1;
-        if (missCount >= CLOSE_CONFIRMATION_MISSES) {
+        const closeConfirmed = window.VMTExtensionCore.canConfirmOverlayClose({
+          canvasHealthy,
+          incomplete: detected.incomplete,
+          sameContext,
+          observations: activeSnapshot.observations,
+          missCount,
+          firstMissAt,
+          now,
+          minimumMisses: CLOSE_CONFIRMATION_MISSES,
+          minimumDurationMs: CLOSE_CONFIRMATION_DURATION_MS,
+        });
+        if (closeConfirmed) {
           if (activeSnapshot.openSyncedAt) {
-            finalizeActiveSnapshot(detected.marketPrice ?? activeSnapshot.currentPrice);
+            closePending = true;
+            saveDiagnostics({
+              closePending: true,
+              closePendingSince: firstMissAt,
+              lastError: 'Overlay disappearance detected. Confirm the close from the extension popup; exit price and P&L will remain unknown.',
+            });
           } else {
-            // The user never clicked Sync Now for this position, so do not add it to the journal.
             activeSnapshot = null;
             missCount = 0;
+            firstMissAt = null;
+            closePending = false;
             persistActiveSnapshot();
           }
         }
       } else {
         missCount = 0;
+        firstMissAt = null;
       }
+    } else {
+      missCount = 0;
+      firstMissAt = null;
     }
 
     const active = activeSnapshot;
@@ -612,6 +610,7 @@
       quantity: snapshot?.quantity ?? active?.quantity ?? null,
       pnl: snapshot?.pnl ?? active?.pnl ?? null,
       missingScans: missCount,
+      closePending,
       lastCaptureAt: now,
       lastMethod: 'chart_overlay',
       lastError: detected.incomplete ? 'Position overlay found, but all three line prices are not readable yet.' : diagnostics.lastError,
@@ -649,11 +648,14 @@
   window.addEventListener('message', (event) => {
     if (event.source !== window || event.data?.source !== EVENT_SOURCE) return;
     if (event.data.type === 'VMT_BRIDGE_READY') {
-      canvasHeartbeatAt = Date.now();
       saveDiagnostics({ bridgeReady: true, lastError: null });
     } else if (event.data.type === 'VMT_CANVAS_TEXT') {
-      canvasItems = Array.isArray(event.data.items) ? event.data.items : [];
-      canvasHeartbeatAt = Number(event.data.timestamp) || Date.now();
+      const renderTimestamp = Number(event.data.timestamp);
+      const currentDocumentRender = Number.isFinite(renderTimestamp)
+        && renderTimestamp >= DOCUMENT_STARTED_AT
+        && renderTimestamp <= Date.now() + 1000;
+      canvasItems = currentDocumentRender && Array.isArray(event.data.items) ? event.data.items : [];
+      if (currentDocumentRender) canvasHeartbeatAt = renderTimestamp;
       if (isConnected) scheduleScan(50);
     }
   });
@@ -679,6 +681,13 @@
         });
       });
       return true;
+    } else if (message.type === 'CONFIRM_CLOSE') {
+      if (!closePending || !activeSnapshot?.openSyncedAt) {
+        sendResponse({ ok: false, error: 'No pending overlay close is ready for confirmation.' });
+      } else {
+        finalizeActiveSnapshot();
+        sendResponse({ ok: true, pending: true });
+      }
     } else if (message.type === 'REQUEST_CAPTURE') {
       isConnected = true;
       const captureStatus = scanChart();

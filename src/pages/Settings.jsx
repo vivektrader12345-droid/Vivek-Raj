@@ -1,12 +1,15 @@
 import React, { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Settings as SettingsIcon, User, Shield, Palette, Bell, Save } from 'lucide-react'
+import { Settings as SettingsIcon, User, Shield, Palette, Bell, Save, Plug } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { createExtensionPairingCode } from '../services/extensionPairingService'
 
 function Settings() {
   const { user, updateProfile, updateSettings, changePassword } = useAuth()
 
   const [activeTab, setActiveTab] = useState('profile')
+  const [extensionPairing, setExtensionPairing] = useState(null)
+  const [creatingPairing, setCreatingPairing] = useState(false)
   const [profileForm, setProfileForm] = useState({
     fullName: user?.fullName || '',
     email: user?.email || '',
@@ -63,11 +66,26 @@ function Settings() {
     toast.success('Settings saved!')
   }
 
+  const handleCreateExtensionPairing = async () => {
+    if (creatingPairing) return
+    setCreatingPairing(true)
+    try {
+      const pairing = await createExtensionPairingCode()
+      setExtensionPairing({ ...pairing, createdAt: Date.now() })
+      toast.success('One-time extension pairing code created')
+    } catch (error) {
+      toast.error(error?.message || 'Unable to create extension pairing code')
+    } finally {
+      setCreatingPairing(false)
+    }
+  }
+
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'security', label: 'Security', icon: Shield },
     { id: 'preferences', label: 'Preferences', icon: Palette },
     { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'extension', label: 'Extension', icon: Plug },
   ]
 
   return (
@@ -252,6 +270,33 @@ function Settings() {
               <Save size={16} /> Save Settings
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Extension Tab */}
+      {activeTab === 'extension' && (
+        <div className="glass-card p-6">
+          <h2 className="text-white font-semibold mb-2">TradingView Extension Pairing</h2>
+          <p className="text-gray-400 text-sm mb-4">
+            Generate a single-use code, then enter it in the extension popup within five minutes. Your Firebase refresh token is never displayed or copied.
+          </p>
+          <button onClick={handleCreateExtensionPairing} disabled={creatingPairing}
+            className="btn-primary flex items-center justify-center gap-2 max-w-xs disabled:opacity-50 disabled:cursor-wait">
+            <Plug size={16} /> {creatingPairing ? 'Creating…' : 'Generate Pairing Code'}
+          </button>
+          {extensionPairing && (
+            <div className="mt-4 max-w-md p-4 rounded-xl border border-[#0f3460] bg-[#0a0a1a]">
+              <p className="text-gray-400 text-xs uppercase tracking-wide">One-time pairing code</p>
+              <div className="flex items-center gap-2 mt-2">
+                <code className="flex-1 break-all text-white bg-black/30 rounded-lg p-3 select-all">{extensionPairing.pairingCode}</code>
+                <button type="button" onClick={async () => {
+                  await navigator.clipboard.writeText(extensionPairing.pairingCode)
+                  toast.success('Pairing code copied')
+                }} className="px-3 py-2 rounded-lg bg-[#0f3460] text-white text-sm">Copy</button>
+              </div>
+              <p className="text-gray-500 text-xs mt-2">Expires five minutes after generation and can be redeemed only once.</p>
+            </div>
+          )}
         </div>
       )}
 

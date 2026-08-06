@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VMT TradingView Sync</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <h1>VMT TradingView Sync</h1>
+    <p id="status" class="status">Loading status…</p>
+
+    <section>
+      <h2>Firebase session</h2>
+      <label>One-time pairing code<input id="pairingCode" autocomplete="one-time-code" spellcheck="false"></label>
+      <p class="hint">Generate this code in Journal Settings → Extension. It expires after five minutes and is redeemed only once.</p>
+      <div class="actions">
+        <button id="connect" class="primary">Connect</button>
+        <button id="disconnect">Disconnect</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Current TradingView tab</h2>
+      <div class="actions">
+        <button id="sync" class="primary">Sync now</button>
+        <button id="retry">Retry queued</button>
+      </div>
+      <button id="confirmClose" class="confirm-close" disabled>Confirm detected close</button>
+      <pre id="details"></pre>
+    </section>
+  </main>
+  <script src="firebase-config.js"></script>
+  <script src="extension-core.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

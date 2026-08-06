@@ -1,0 +1,18 @@
+* { box-sizing: border-box; }
+body { margin: 0; width: 360px; background: #0a0a1a; color: #f8fafc; font: 13px/1.4 system-ui, sans-serif; }
+main { padding: 16px; }
+h1 { margin: 0 0 8px; font-size: 18px; }
+h2 { margin: 0 0 10px; font-size: 14px; }
+section { margin-top: 14px; padding: 12px; border: 1px solid #24375e; border-radius: 10px; background: #12152a; }
+label { display: block; margin: 8px 0; color: #cbd5e1; }
+input { display: block; width: 100%; margin-top: 4px; padding: 8px; border: 1px solid #334a75; border-radius: 6px; background: #080b18; color: #fff; }
+.actions { display: flex; gap: 8px; margin-top: 10px; }
+button { flex: 1; padding: 8px 10px; border: 1px solid #3a4f78; border-radius: 7px; background: #1e293b; color: #fff; cursor: pointer; }
+button.primary { border-color: #e94560; background: #e94560; }
+button:disabled { cursor: wait; opacity: .55; }
+.status { margin: 0; color: #94a3b8; }
+.status.error { color: #f87171; }
+.status.success { color: #4ade80; }
+.hint { margin: 6px 0 0; color: #94a3b8; font-size: 11px; }
+pre { min-height: 42px; max-height: 125px; margin: 10px 0 0; overflow: auto; white-space: pre-wrap; color: #a5b4fc; font: 11px/1.4 ui-monospace, monospace; }
+.confirm-close { width: 100%; margin-top: 8px; border-color: #f59e0b; color: #fbbf24; }

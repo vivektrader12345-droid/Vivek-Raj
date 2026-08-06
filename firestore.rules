@@ -17,8 +17,21 @@ service cloud.firestore {
         && hasCurrentOtpProof();
     }
 
+    function isAuthorizedTradeExtension(userId) {
+      return request.auth != null
+        && request.auth.uid == userId
+        && request.auth.token.firebase.sign_in_provider == 'custom'
+        && 'extension_session' in request.auth.token
+        && request.auth.token.extension_session == true;
+    }
+
     match /users/{userId} {
       allow read, write: if isAuthorizedOwner(userId);
+
+      match /trades/{docId} {
+        allow read, write: if isAuthorizedOwner(userId);
+        allow write: if isAuthorizedTradeExtension(userId);
+      }
 
       match /{subcollection}/{docId} {
         allow read, write: if isAuthorizedOwner(userId);

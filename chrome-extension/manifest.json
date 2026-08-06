@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Vivek Marco Trader Sync",
+  "version": "2.1.0",
+  "description": "Capture TradingView position overlays and sync them to Vivek Marco Trader.",
+  "minimum_chrome_version": "111",
+  "permissions": ["storage", "alarms", "activeTab"],
+  "host_permissions": [
+    "https://firestore.googleapis.com/*",
+    "https://securetoken.googleapis.com/*",
+    "https://identitytoolkit.googleapis.com/*",
+    "https://vivek-raj.onrender.com/*",
+    "https://tradingview.com/*",
+    "https://*.tradingview.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Vivek Marco Trader Sync",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://tradingview.com/*", "https://*.tradingview.com/*"],
+      "js": ["page-bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://tradingview.com/*", "https://*.tradingview.com/*"],
+      "js": ["extension-core.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

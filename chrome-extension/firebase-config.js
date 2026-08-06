@@ -8,14 +8,11 @@ const FIREBASE_CONFIG = {
   projectId: "vivek-crypto-trader-b8d19",
   storageBucket: "vivek-crypto-trader-b8d19.firebasestorage.app",
   messagingSenderId: "239457253705",
-  appId: "1:239457253705:web:230111e02de57ee5e28298"
+  appId: "1:239457253705:web:230111e02de57ee5e28298",
+  backendOrigin: "https://vivek-raj.onrender.com"
 };
 
-// Firestore REST API base
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents`;
 
-// Export for use in other scripts
-if (typeof window !== 'undefined') {
-  window.FIREBASE_CONFIG = FIREBASE_CONFIG;
-  window.FIRESTORE_BASE = FIRESTORE_BASE;
-}
+globalThis.VMT_FIREBASE_CONFIG = FIREBASE_CONFIG;
+globalThis.VMT_FIRESTORE_BASE = FIRESTORE_BASE;

@@ -254,6 +254,15 @@ from otp_auth import create_otp_blueprint
 if 'otp_auth' not in app.blueprints:
     app.register_blueprint(create_otp_blueprint(db, firebase_app=firebase_app))
 
+# One-time pairing creates a refreshable, owner-bound extension session without
+# exposing the browser Firebase SDK's long-lived refresh credential.
+from extension_pairing import create_extension_pairing_blueprint
+
+if 'extension_pairing' not in app.blueprints:
+    app.register_blueprint(create_extension_pairing_blueprint(
+        db, firebase_app=firebase_app
+    ))
+
 # Secure TradingView webhook intelligence APIs.
 from webhook_intelligence import create_webhook_blueprint
 
