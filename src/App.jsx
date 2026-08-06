@@ -21,6 +21,7 @@ import AlgoTrading from './pages/AlgoTrading'
 import WebhookIntelligence from './pages/WebhookIntelligence'
 import ProTrading from './trading/ProTrading'
 import Layout from './components/Layout'
+import PWAInstallPrompt from './components/PWAInstallPrompt'
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth()
@@ -55,6 +56,7 @@ function App() {
                 error: { iconTheme: { primary: '#ff1744', secondary: '#fff' } },
               }}
             />
+            <PWAInstallPrompt />
             <Routes>
               <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
               <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
