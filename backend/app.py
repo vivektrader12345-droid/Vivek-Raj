@@ -24,10 +24,10 @@ from functools import wraps
 import json
 import os
 import uuid
-import ccxt
 from firebase_admin import auth as firebase_auth
 from firebase_admin_setup import initialize_firebase_services
 from auth_policy import has_current_otp_proof
+from exchange_registry import TenantExchangeRegistry
 from binance_sync import start_sync_for_user, stop_sync_for_user, get_sync_status, BinanceSyncService
 
 app = Flask(__name__)
@@ -45,6 +45,7 @@ BINANCE_API_KEY = os.environ.get('BINANCE_API_KEY', '')
 BINANCE_API_SECRET = os.environ.get('BINANCE_API_SECRET', '')
 USE_TESTNET = os.environ.get('USE_TESTNET', 'false').lower() == 'true'
 CONNECT_EXCHANGE_ON_STARTUP = os.environ.get('CONNECT_EXCHANGE_ON_STARTUP', 'false').lower() == 'true'
+STARTUP_EXCHANGE_USER_ID = os.environ.get('STARTUP_EXCHANGE_USER_ID', '').strip()
 
 # Firebase Admin uses Application Default Credentials. In hosted environments,
 # GOOGLE_APPLICATION_CREDENTIALS may reference a securely mounted secret file.
@@ -133,36 +134,35 @@ memory_portfolio = {
     'mode': 'demo',
 }
 
-# ===== EXCHANGE CONNECTION =====
-exchange = None
+# ===== TENANT-SCOPED EXCHANGE CONNECTIONS =====
+exchange_registry = TenantExchangeRegistry()
 
-def connect_exchange(api_key=None, api_secret=None, testnet=False):
-    """Connect to Binance exchange"""
-    global exchange
-    key = api_key or BINANCE_API_KEY
-    secret = api_secret or BINANCE_API_SECRET
-    if not key or not secret:
-        return False
-    try:
-        exchange = ccxt.binance({
-            'apiKey': key,
-            'secret': secret,
-            'sandbox': testnet,
-            'options': {'defaultType': 'future'},
-            'enableRateLimit': True,
-        })
-        exchange.fetch_balance()
-        print(f"[OK] Exchange connected (testnet={testnet})")
-        return True
-    except Exception as e:
-        print(f"[ERROR] Exchange connection failed: {e}")
-        exchange = None
-        return False
 
-# Exchange startup is explicit opt-in to prevent credential-bearing .env files
-# from causing network activity during backend startup.
-if CONNECT_EXCHANGE_ON_STARTUP and BINANCE_API_KEY and BINANCE_API_SECRET:
-    connect_exchange(testnet=USE_TESTNET)
+def connect_exchange(user_id, api_key, api_secret, testnet=False):
+    """Connect one authenticated user's Binance adapter without sharing state."""
+    success = exchange_registry.connect(user_id, api_key, api_secret, testnet)
+    if success:
+        print(f"[OK] Tenant exchange connected (testnet={bool(testnet)})")
+    else:
+        print("[ERROR] Tenant exchange connection failed")
+    return success
+
+
+# Startup credentials are usable only when explicitly assigned to one tenant.
+if (
+    CONNECT_EXCHANGE_ON_STARTUP
+    and STARTUP_EXCHANGE_USER_ID
+    and BINANCE_API_KEY
+    and BINANCE_API_SECRET
+):
+    connect_exchange(
+        STARTUP_EXCHANGE_USER_ID,
+        BINANCE_API_KEY,
+        BINANCE_API_SECRET,
+        testnet=USE_TESTNET,
+    )
+elif CONNECT_EXCHANGE_ON_STARTUP:
+    print("[WARN] Startup exchange disabled: STARTUP_EXCHANGE_USER_ID or credentials missing")
 
 
 # ===== DEMO TRADING ENGINE =====
@@ -265,9 +265,10 @@ def execute_demo_trade(user_id, trade_data):
 # ===== LIVE TRADING ENGINE =====
 
 def execute_live_trade(user_id, trade_data):
-    """Execute a real trade on Binance and save to Firebase"""
-    if not exchange:
-        return {'status': 'error', 'message': 'Exchange not connected'}
+    """Execute a real trade through the authenticated user's Binance adapter."""
+    user_exchange = exchange_registry.get(user_id)
+    if user_exchange is None:
+        return {'status': 'error', 'message': 'Exchange not connected for this user'}
 
     try:
         symbol = trade_data.get('symbol', 'BTC/USDT').upper()
@@ -290,12 +291,12 @@ def execute_live_trade(user_id, trade_data):
 
         # Set leverage
         try:
-            exchange.set_leverage(leverage, symbol.replace('/', ''))
+            user_exchange.set_leverage(leverage, symbol.replace('/', ''))
         except:
             pass
 
         # Execute market order
-        order = exchange.create_market_order(symbol, side, qty)
+        order = user_exchange.create_market_order(symbol, side, qty)
         fill_price = float(order.get('average', order.get('price', 0)))
         filled_qty = float(order.get('filled', qty))
 
@@ -310,7 +311,7 @@ def execute_live_trade(user_id, trade_data):
         if sl:
             try:
                 sl_side = 'sell' if side == 'buy' else 'buy'
-                sl_order = exchange.create_order(symbol, 'stop_market', sl_side, filled_qty, None, {'stopPrice': float(sl)})
+                sl_order = user_exchange.create_order(symbol, 'stop_market', sl_side, filled_qty, None, {'stopPrice': float(sl)})
                 sl_order_id = sl_order.get('id')
             except Exception as e:
                 print(f"[WARN] SL order failed: {e}")
@@ -318,7 +319,7 @@ def execute_live_trade(user_id, trade_data):
         if tp:
             try:
                 tp_side = 'sell' if side == 'buy' else 'buy'
-                tp_order = exchange.create_order(symbol, 'take_profit_market', tp_side, filled_qty, None, {'stopPrice': float(tp)})
+                tp_order = user_exchange.create_order(symbol, 'take_profit_market', tp_side, filled_qty, None, {'stopPrice': float(tp)})
                 tp_order_id = tp_order.get('id')
             except Exception as e:
                 print(f"[WARN] TP order failed: {e}")
@@ -370,7 +371,7 @@ def home():
     return jsonify({
         'service': 'Vivek Marco Trader - Auto Trading Server',
         'status': 'running',
-        'exchange_connected': exchange is not None,
+        'exchange_connected': exchange_registry.connected_count() > 0,
         'firebase_connected': db is not None,
         'testnet': USE_TESTNET,
         'version': '2.0',
@@ -687,7 +688,7 @@ def connect_user_exchange(user_id):
     api_secret = data.get('apiSecret', '')
     testnet = data.get('testnet', False)
 
-    success = connect_exchange(api_key, api_secret, testnet)
+    success = connect_exchange(user_id, api_key, api_secret, testnet)
 
     if success and db:
         # Save exchange connection status (NOT the keys for security)
@@ -706,7 +707,7 @@ def connect_user_exchange(user_id):
 def health():
     return jsonify({
         'status': 'healthy',
-        'exchange': exchange is not None,
+        'exchange': exchange_registry.connected_count() > 0,
         'firebase': db is not None,
         'alerts_count': len(memory_alerts),
         'trades_count': len(memory_trades),
@@ -884,7 +885,7 @@ if __name__ == '__main__':
     ║  Portfolio: /api/portfolio/<user_id>                    ║
     ║  Trades:   /api/trades/<user_id>                       ║
     ║                                                        ║
-    ║  Exchange:  {'Connected ✅' if exchange else 'Not connected ❌'}
+    ║  Exchange:  {'Connected ✅' if exchange_registry.connected_count() > 0 else 'Not connected ❌'}
     ║  Firebase:  {'Connected ✅' if db else 'Not connected ❌'}
     ╚════════════════════════════════════════════════════════╝
     """)
