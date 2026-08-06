@@ -9,6 +9,7 @@
     "prebuild": "npm run generate:pwa-icons",
     "build": "vite build",
     "test:pwa": "npm run build && node --test tests/pwaInstallability.test.js",
+    "test:pwa:static": "node --test --test-name-pattern=\"production manifest and icons\" tests/pwaInstallability.test.js",
     "test": "npm run build && node --test tests/firebaseAuthenticatedFetch.test.js tests/webhookApiConfig.test.js tests/pwaInstallability.test.js",
     "test:geometry:exploration": "node --test tests/geometry/terminalGeometry.exploration.test.js",
     "test:trade-history:exploration": "node --test tests/trade-history/tradeHistory.exploration.test.js",
