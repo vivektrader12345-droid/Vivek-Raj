@@ -23,9 +23,11 @@ from datetime import datetime
 from functools import wraps
 import hmac
 import json
+import math
 import os
 import uuid
-from firebase_admin import auth as firebase_auth
+from firebase_admin import auth as firebase_auth, firestore
+from google.api_core.exceptions import Aborted
 from firebase_admin_setup import initialize_firebase_services
 from auth_policy import has_current_otp_proof
 from exchange_registry import TenantExchangeRegistry
@@ -96,6 +98,121 @@ def sanitize_legacy_payload(value, depth=0):
     if value is None or isinstance(value, (bool, int, float)):
         return value
     return str(value)[:2048]
+
+
+def request_json_object():
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+def positive_number(value, field_name):
+    """Parse a finite number greater than zero or return a client-safe error."""
+    if isinstance(value, bool):
+        return None, f'{field_name} must be a positive number'
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None, f'{field_name} must be a positive number'
+    if not math.isfinite(parsed) or parsed <= 0:
+        return None, f'{field_name} must be a positive number'
+    return parsed, None
+
+
+def validate_protection_levels(side, reference_price, stop_loss, take_profit):
+    """Ensure protection orders are on the safe side of a known market price."""
+    if side == 'buy':
+        if stop_loss is not None and stop_loss >= reference_price:
+            return 'Stop loss must be below the reference price for a buy/long trade'
+        if take_profit is not None and take_profit <= reference_price:
+            return 'Take profit must be above the reference price for a buy/long trade'
+    else:
+        if stop_loss is not None and stop_loss <= reference_price:
+            return 'Stop loss must be above the reference price for a sell/short trade'
+        if take_profit is not None and take_profit >= reference_price:
+            return 'Take profit must be below the reference price for a sell/short trade'
+    return None
+
+
+def run_firestore_transaction(database, operation, max_attempts=5):
+    """Retry Firestore contention while re-reading all transaction state."""
+    for attempt in range(max_attempts):
+        transaction = database.transaction()
+        try:
+            result = operation(transaction)
+            transaction.commit()
+            return result
+        except Aborted:
+            if attempt == max_attempts - 1:
+                raise
+    raise RuntimeError('Firestore transaction attempts exhausted')
+
+
+def validate_trade_input(trade_data, require_price):
+    """Normalize shared demo/live order inputs before any exchange or DB write."""
+    if not isinstance(trade_data, dict):
+        return None, 'Trade payload must be a JSON object'
+
+    symbol = str(trade_data.get('symbol') or 'BTC/USDT').strip().upper()[:40]
+    if '/' not in symbol and symbol.endswith('USDT'):
+        symbol = symbol[:-4] + '/USDT'
+    if not symbol or '/' not in symbol:
+        return None, 'Invalid symbol'
+
+    action = str(trade_data.get('action') or 'buy').lower()
+    if 'buy' in action or 'long' in action:
+        side = 'buy'
+    elif 'sell' in action or 'short' in action:
+        side = 'sell'
+    else:
+        return None, f'Unknown action: {action[:40]}'
+
+    quantity_value = trade_data.get(
+        'qty', trade_data.get('quantity', trade_data.get('amount', 1 if require_price else 0))
+    )
+    quantity, error = positive_number(quantity_value, 'Quantity')
+    if error:
+        return None, error
+
+    leverage_value, error = positive_number(trade_data.get('leverage', 10), 'Leverage')
+    if error or not leverage_value.is_integer() or leverage_value > 125:
+        return None, 'Leverage must be a whole number between 1 and 125'
+    leverage = int(leverage_value)
+
+    price = None
+    if require_price:
+        price, error = positive_number(trade_data.get('price'), 'Price')
+        if error:
+            return None, error
+
+    optional_prices = {}
+    for output_name, keys in (
+        ('stopLoss', ('sl', 'stop_loss')),
+        ('takeProfit', ('tp', 'take_profit')),
+    ):
+        raw_value = next((trade_data.get(key) for key in keys if trade_data.get(key) not in (None, '')), None)
+        if raw_value is None:
+            optional_prices[output_name] = None
+            continue
+        parsed, error = positive_number(raw_value, output_name)
+        if error:
+            return None, error
+        optional_prices[output_name] = parsed
+
+    if price is not None:
+        protection_error = validate_protection_levels(
+            side, price, optional_prices['stopLoss'], optional_prices['takeProfit']
+        )
+        if protection_error:
+            return None, protection_error
+
+    return {
+        'symbol': symbol,
+        'side': side,
+        'price': price,
+        'quantity': quantity,
+        'leverage': leverage,
+        **optional_prices,
+    }, None
 
 
 def require_firebase_user(handler):
@@ -203,31 +320,23 @@ elif CONNECT_EXCHANGE_ON_STARTUP:
 def execute_demo_trade(user_id, trade_data):
     """Execute a virtual trade (demo mode) and save to Firebase"""
     try:
-        symbol = trade_data.get('symbol', 'BTC/USDT').upper()
-        if '/' not in symbol:
-            if symbol.endswith('USDT'):
-                symbol = symbol[:-4] + '/USDT'
+        validated, validation_error = validate_trade_input(trade_data, require_price=True)
+        if validation_error:
+            return {'status': 'error', 'message': validation_error}
 
-        side = trade_data.get('action', 'buy').lower()
-        if 'buy' in side or 'long' in side:
-            side = 'buy'
-        elif 'sell' in side or 'short' in side:
-            side = 'sell'
-        else:
-            return {'status': 'error', 'message': f'Unknown action: {side}'}
-
-        price = float(trade_data.get('price', 0))
-        qty = float(trade_data.get('qty', trade_data.get('quantity', trade_data.get('amount', 1))))
-        leverage = int(trade_data.get('leverage', 10))
-        sl = float(trade_data.get('sl', trade_data.get('stop_loss', 0))) if trade_data.get('sl') or trade_data.get('stop_loss') else None
-        tp = float(trade_data.get('tp', trade_data.get('take_profit', 0))) if trade_data.get('tp') or trade_data.get('take_profit') else None
-
-        if price <= 0:
-            return {'status': 'error', 'message': 'Invalid price'}
+        symbol = validated['symbol']
+        side = validated['side']
+        price = validated['price']
+        qty = validated['quantity']
+        leverage = validated['leverage']
+        sl = validated['stopLoss']
+        tp = validated['takeProfit']
 
         # Calculate margin
         position_value = price * qty
         margin = position_value / leverage
+        if round(margin, 2) <= 0:
+            return {'status': 'error', 'message': 'Position margin is too small'}
         fee = position_value * 0.0004  # 0.04% taker fee
 
         # Create trade record
@@ -253,39 +362,47 @@ def execute_demo_trade(user_id, trade_data):
             'exitPrice': None,
         }
 
-        # Save to Firebase
+        # Persist the trade and portfolio delta atomically.
         if db:
             doc_ref = db.collection('users').document(user_id).collection('webhook_trades').document(trade['id'])
-            doc_ref.set(trade)
-
-            # Update portfolio
             portfolio_ref = db.collection('users').document(user_id).collection('data').document('portfolio')
-            portfolio = portfolio_ref.get()
-            if portfolio.exists:
-                p = portfolio.to_dict()
-                portfolio_ref.update({
-                    'usedMargin': round(p.get('usedMargin', 0) + margin, 2),
-                    'availableMargin': round(p.get('availableMargin', 100000) - margin, 2),
-                    'openPositions': p.get('openPositions', 0) + 1,
-                    'totalTrades': p.get('totalTrades', 0) + 1,
-                    'lastUpdated': datetime.now().isoformat(),
-                })
-            else:
-                portfolio_ref.set({
-                    'balance': 100000,
-                    'availableMargin': 100000 - margin,
-                    'usedMargin': margin,
-                    'openPositions': 1,
-                    'totalTrades': 1,
-                    'totalPnl': 0,
-                    'realizedPnl': 0,
-                    'unrealizedPnl': 0,
-                    'winRate': 0,
-                    'wins': 0,
-                    'losses': 0,
-                    'mode': 'demo',
-                    'lastUpdated': datetime.now().isoformat(),
-                })
+            def persist_entry(transaction):
+                portfolio = portfolio_ref.get(transaction=transaction)
+                if portfolio.exists:
+                    p = portfolio.to_dict() or {}
+                    portfolio_values = {
+                        'usedMargin': round(p.get('usedMargin', 0) + margin, 2),
+                        'availableMargin': round(p.get('availableMargin', 100000) - margin, 2),
+                        'openPositions': p.get('openPositions', 0) + 1,
+                        'totalTrades': p.get('totalTrades', 0) + 1,
+                        'lastUpdated': datetime.now().isoformat(),
+                    }
+                    portfolio_merge = True
+                else:
+                    portfolio_values = {
+                        'balance': 100000,
+                        'availableMargin': round(100000 - margin, 2),
+                        'usedMargin': round(margin, 2),
+                        'openPositions': 1,
+                        'totalTrades': 1,
+                        'totalPnl': 0,
+                        'realizedPnl': 0,
+                        'unrealizedPnl': 0,
+                        'winRate': 0,
+                        'wins': 0,
+                        'losses': 0,
+                        'mode': 'demo',
+                        'lastUpdated': datetime.now().isoformat(),
+                    }
+                    portfolio_merge = False
+                transaction.set(doc_ref, trade)
+                transaction.set(portfolio_ref, portfolio_values, merge=portfolio_merge)
+
+            try:
+                run_firestore_transaction(db, persist_entry)
+            except Exception:
+                print('[ERROR] Demo trade persistence transaction failed')
+                return {'status': 'error', 'message': 'Trade could not be persisted'}
 
         print(f"[DEMO] {side.upper()} {symbol} | Qty: {qty} | Price: ${price} | Leverage: {leverage}x | Margin: ${margin:.2f}")
         return {'status': 'executed', 'mode': 'demo', 'trade': trade}
@@ -304,23 +421,31 @@ def execute_live_trade(user_id, trade_data):
         return {'status': 'error', 'message': 'Exchange not connected for this user'}
 
     try:
-        symbol = trade_data.get('symbol', 'BTC/USDT').upper()
-        if '/' not in symbol:
-            if symbol.endswith('USDT'):
-                symbol = symbol[:-4] + '/USDT'
+        validated, validation_error = validate_trade_input(trade_data, require_price=False)
+        if validation_error:
+            return {'status': 'error', 'message': validation_error}
 
-        side = trade_data.get('action', 'buy').lower()
-        if 'buy' in side or 'long' in side:
-            side = 'buy'
-        elif 'sell' in side or 'short' in side:
-            side = 'sell'
-        else:
-            return {'status': 'error', 'message': f'Unknown action: {side}'}
+        symbol = validated['symbol']
+        side = validated['side']
+        qty = validated['quantity']
+        leverage = validated['leverage']
+        sl = validated['stopLoss']
+        tp = validated['takeProfit']
 
-        qty = float(trade_data.get('qty', trade_data.get('quantity', trade_data.get('amount', 0))))
-        leverage = int(trade_data.get('leverage', 10))
-        sl = trade_data.get('sl') or trade_data.get('stop_loss')
-        tp = trade_data.get('tp') or trade_data.get('take_profit')
+        # Validate protection levels against a current quote before placing any order.
+        if sl is not None or tp is not None:
+            try:
+                ticker = user_exchange.fetch_ticker(symbol)
+                reference_price, reference_error = positive_number(
+                    (ticker or {}).get('last'), 'Reference price'
+                )
+            except Exception:
+                return {'status': 'error', 'message': 'Unable to validate protection levels'}
+            if reference_error:
+                return {'status': 'error', 'message': reference_error}
+            protection_error = validate_protection_levels(side, reference_price, sl, tp)
+            if protection_error:
+                return {'status': 'error', 'message': protection_error}
 
         # Set leverage
         try:
@@ -332,6 +457,33 @@ def execute_live_trade(user_id, trade_data):
         order = user_exchange.create_market_order(symbol, side, qty)
         fill_price = float(order.get('average', order.get('price', 0)))
         filled_qty = float(order.get('filled', qty))
+
+        post_fill_protection_error = validate_protection_levels(side, fill_price, sl, tp)
+        if post_fill_protection_error:
+            close_side = 'sell' if side == 'buy' else 'buy'
+            try:
+                emergency_order = user_exchange.create_order(
+                    symbol,
+                    'market',
+                    close_side,
+                    filled_qty,
+                    None,
+                    {'reduceOnly': True},
+                )
+                return {
+                    'status': 'error',
+                    'message': 'Protection levels became invalid after fill; position was immediately closed',
+                    'emergencyClosed': True,
+                    'entryOrderId': order.get('id'),
+                    'closeOrderId': emergency_order.get('id'),
+                }
+            except Exception:
+                return {
+                    'status': 'error',
+                    'message': 'URGENT: protection invalid after fill and emergency close failed',
+                    'emergencyClosed': False,
+                    'entryOrderId': order.get('id'),
+                }
 
         # Position value
         position_value = fill_price * filled_qty
@@ -436,16 +588,26 @@ def webhook_with_key(webhook_key):
         if not user_id:
             return jsonify({'status': 'error', 'message': 'Invalid webhook key'}), 401
 
-        # Parse alert data
+        # Parse and validate before retaining an alert or acknowledging success.
         if request.is_json:
-            data = request.get_json()
+            data = request.get_json(silent=True)
         else:
             try:
                 data = json.loads(request.data.decode('utf-8'))
-            except:
-                data = {'message': request.data.decode('utf-8')}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                data = None
+        if not isinstance(data, dict):
+            return jsonify({'status': 'error', 'message': 'JSON object required'}), 400
 
-        # Log alert
+        live_enabled = user_mode == 'live' and LEGACY_WEBHOOK_LIVE_ENABLED
+        _, validation_error = validate_trade_input(data, require_price=not live_enabled)
+        if validation_error:
+            return jsonify({'status': 'error', 'message': validation_error}), 400
+
+        result = execute_live_trade(user_id, data) if live_enabled else execute_demo_trade(user_id, data)
+        if result.get('status') == 'error':
+            return jsonify({'status': 'error', 'message': result.get('message', 'Trade rejected')}), 422
+
         alert = {
             'id': f'alert_{int(datetime.now().timestamp() * 1000)}',
             'userId': user_id,
@@ -453,18 +615,10 @@ def webhook_with_key(webhook_key):
             'receivedAt': datetime.now().isoformat(),
             'mode': user_mode,
         }
-
         if db:
             db.collection('users').document(user_id).collection('webhook_alerts').add(alert)
 
         print(f"[WEBHOOK] User: {user_id} | Mode: {user_mode} | Action: {data.get('action', 'unknown')}")
-
-        # Execute trade based on mode
-        if user_mode == 'live' and LEGACY_WEBHOOK_LIVE_ENABLED:
-            result = execute_live_trade(user_id, data)
-        else:
-            result = execute_demo_trade(user_id, data)
-
         return jsonify({'status': 'success', 'alert': alert, 'trade': result}), 200
 
     except Exception as e:
@@ -511,6 +665,15 @@ def webhook_legacy():
         if not user_id:
             return jsonify({'status': 'error', 'message': 'Valid user webhook key required'}), 401
 
+        live_enabled = user_mode == 'live' and LEGACY_WEBHOOK_LIVE_ENABLED
+        _, validation_error = validate_trade_input(data, require_price=not live_enabled)
+        if validation_error:
+            return jsonify({'status': 'error', 'message': validation_error}), 400
+
+        trade_result = execute_live_trade(user_id, data) if live_enabled else execute_demo_trade(user_id, data)
+        if trade_result.get('status') == 'error':
+            return jsonify({'status': 'error', 'message': trade_result.get('message', 'Trade rejected')}), 422
+
         alert = {
             'id': f'alert_{int(datetime.now().timestamp() * 1000)}',
             'userId': user_id,
@@ -530,11 +693,6 @@ def webhook_legacy():
         db.collection('users').document(user_id).collection('webhook_alerts').add(alert)
 
         print(f"[WEBHOOK] User: {user_id} | Action: {alert['action']} | Symbol: {alert['symbol']}")
-        if user_mode == 'live' and LEGACY_WEBHOOK_LIVE_ENABLED:
-            trade_result = execute_live_trade(user_id, data)
-        else:
-            trade_result = execute_demo_trade(user_id, data)
-
         return jsonify({'status': 'success', 'alert': alert, 'trade': trade_result}), 200
     except Exception:
         print('[ERROR] Legacy webhook processing failed')
@@ -589,64 +747,93 @@ def get_user_trades(user_id):
 @app.route('/api/trades/<user_id>/<trade_id>/close', methods=['POST'])
 @require_firebase_user
 def close_trade(user_id, trade_id):
-    """Close a trade manually"""
+    """Close a trade and update portfolio accounting in one transaction."""
     if not db:
-        return jsonify({'status': 'error'}), 500
+        return jsonify({'status': 'error', 'message': 'Database unavailable'}), 503
 
-    data = request.get_json() or {}
-    exit_price = float(data.get('exitPrice', data.get('price', 0)))
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'status': 'error', 'message': 'JSON object required'}), 400
+    exit_price, validation_error = positive_number(
+        data.get('exitPrice', data.get('price')), 'Exit price'
+    )
+    if validation_error:
+        return jsonify({'status': 'error', 'message': validation_error}), 400
 
     trade_ref = db.collection('users').document(user_id).collection('webhook_trades').document(trade_id)
-    trade_doc = trade_ref.get()
-
-    if not trade_doc.exists:
-        return jsonify({'status': 'error', 'message': 'Trade not found'}), 404
-
-    trade = trade_doc.to_dict()
-    if trade['status'] != 'open':
-        return jsonify({'status': 'error', 'message': 'Trade already closed'}), 400
-
-    # Calculate PnL
-    entry = trade['entryPrice']
-    qty = trade['quantity']
-    leverage = trade['leverage']
-
-    if trade['side'] == 'buy':
-        pnl = (exit_price - entry) * qty
-    else:
-        pnl = (entry - exit_price) * qty
-
-    roi = (pnl / trade['margin']) * 100 if trade['margin'] > 0 else 0
-
-    # Update trade
-    trade_ref.update({
-        'status': 'closed',
-        'exitPrice': exit_price,
-        'pnl': round(pnl, 2),
-        'roi': round(roi, 2),
-        'closedAt': datetime.now().isoformat(),
-    })
-
-    # Update portfolio
     portfolio_ref = db.collection('users').document(user_id).collection('data').document('portfolio')
-    portfolio = portfolio_ref.get()
-    if portfolio.exists:
-        p = portfolio.to_dict()
-        is_win = pnl > 0
-        portfolio_ref.update({
-            'usedMargin': round(max(0, p.get('usedMargin', 0) - trade['margin']), 2),
-            'availableMargin': round(p.get('availableMargin', 100000) + trade['margin'] + pnl, 2),
-            'balance': round(p.get('balance', 100000) + pnl, 2),
-            'openPositions': max(0, p.get('openPositions', 0) - 1),
-            'realizedPnl': round(p.get('realizedPnl', 0) + pnl, 2),
-            'totalPnl': round(p.get('totalPnl', 0) + pnl, 2),
-            'wins': p.get('wins', 0) + (1 if is_win else 0),
-            'losses': p.get('losses', 0) + (0 if is_win else 1),
-            'winRate': round(((p.get('wins', 0) + (1 if is_win else 0)) / max(1, p.get('totalTrades', 1))) * 100, 1),
-            'lastUpdated': datetime.now().isoformat(),
+    def perform_close(transaction):
+        trade_doc = trade_ref.get(transaction=transaction)
+        portfolio_doc = portfolio_ref.get(transaction=transaction)
+        if not trade_doc.exists:
+            return {'outcome': 'not_found'}
+
+        trade = trade_doc.to_dict() or {}
+        if trade.get('status') != 'open':
+            return {'outcome': 'already_closed'}
+
+        entry, entry_error = positive_number(trade.get('entryPrice'), 'Stored entry price')
+        qty, qty_error = positive_number(trade.get('quantity'), 'Stored quantity')
+        margin, margin_error = positive_number(trade.get('margin'), 'Stored margin')
+        if entry_error or qty_error or margin_error or trade.get('side') not in ('buy', 'sell'):
+            return {'outcome': 'invalid_trade'}
+
+        pnl = (exit_price - entry) * qty if trade['side'] == 'buy' else (entry - exit_price) * qty
+        roi = (pnl / margin) * 100
+        closed_at = datetime.now().isoformat()
+        transaction.update(trade_ref, {
+            'status': 'closed',
+            'exitPrice': exit_price,
+            'pnl': round(pnl, 2),
+            'roi': round(roi, 2),
+            'closedAt': closed_at,
         })
 
-    return jsonify({'status': 'closed', 'pnl': round(pnl, 2), 'roi': round(roi, 2)})
+        if portfolio_doc.exists:
+            portfolio = portfolio_doc.to_dict() or {}
+
+            def portfolio_number(key, default=0):
+                try:
+                    value = float(portfolio.get(key, default))
+                    return value if math.isfinite(value) else float(default)
+                except (TypeError, ValueError):
+                    return float(default)
+
+            is_win = pnl > 0
+            wins = int(portfolio_number('wins')) + (1 if is_win else 0)
+            losses = int(portfolio_number('losses')) + (0 if is_win else 1)
+            total_trades = max(1, int(portfolio_number('totalTrades', 1)))
+            transaction.update(portfolio_ref, {
+                'usedMargin': round(max(0, portfolio_number('usedMargin') - margin), 2),
+                'availableMargin': round(portfolio_number('availableMargin', 100000) + margin + pnl, 2),
+                'balance': round(portfolio_number('balance', 100000) + pnl, 2),
+                'openPositions': max(0, int(portfolio_number('openPositions')) - 1),
+                'realizedPnl': round(portfolio_number('realizedPnl') + pnl, 2),
+                'totalPnl': round(portfolio_number('totalPnl') + pnl, 2),
+                'wins': wins,
+                'losses': losses,
+                'winRate': round((wins / total_trades) * 100, 1),
+                'lastUpdated': closed_at,
+            })
+        return {'outcome': 'closed', 'pnl': pnl, 'roi': roi}
+
+    try:
+        result = run_firestore_transaction(db, perform_close)
+    except Exception:
+        print('[ERROR] Trade close transaction failed')
+        return jsonify({'status': 'error', 'message': 'Trade close could not be persisted'}), 503
+
+    if result['outcome'] == 'not_found':
+        return jsonify({'status': 'error', 'message': 'Trade not found'}), 404
+    if result['outcome'] == 'already_closed':
+        return jsonify({'status': 'error', 'message': 'Trade already closed'}), 409
+    if result['outcome'] == 'invalid_trade':
+        return jsonify({'status': 'error', 'message': 'Trade data is invalid'}), 422
+    return jsonify({
+        'status': 'closed',
+        'pnl': round(result['pnl'], 2),
+        'roi': round(result['roi'], 2),
+    })
 
 
 @app.route('/api/generate-webhook-key/<user_id>', methods=['POST'])
@@ -678,8 +865,8 @@ def set_trading_mode(user_id):
     if not db:
         return jsonify({'status': 'error'}), 500
 
-    data = request.get_json()
-    mode = data.get('mode', 'demo')
+    data = request_json_object()
+    mode = data.get('mode')
 
     if mode not in ['demo', 'live']:
         return jsonify({'status': 'error', 'message': 'Mode must be demo or live'}), 400
@@ -698,10 +885,12 @@ def set_trading_mode(user_id):
 @require_firebase_user
 def connect_user_exchange(user_id):
     """Connect exchange API keys for a user"""
-    data = request.get_json()
+    data = request_json_object()
     api_key = data.get('apiKey', '')
     api_secret = data.get('apiSecret', '')
     testnet = data.get('testnet', False)
+    if not api_key or not api_secret:
+        return jsonify({'status': 'error', 'message': 'apiKey and apiSecret are required'}), 400
 
     success = connect_exchange(user_id, api_key, api_secret, testnet)
 
@@ -753,7 +942,7 @@ def get_memory_trades():
 @require_firebase_user
 def binance_connect():
     """Verify and connect Binance Futures Testnet API"""
-    data = request.get_json()
+    data = request_json_object()
     user_id = data.get('userId')
     api_key = data.get('apiKey', '')
     api_secret = data.get('apiSecret', '')
@@ -786,7 +975,7 @@ def binance_connect():
 @require_firebase_user
 def binance_start_sync():
     """Start background auto-sync for a user"""
-    data = request.get_json()
+    data = request_json_object()
     user_id = data.get('userId')
     api_key = data.get('apiKey', '')
     api_secret = data.get('apiSecret', '')
@@ -804,7 +993,7 @@ def binance_start_sync():
 @require_firebase_user
 def binance_stop_sync():
     """Stop background sync for a user"""
-    data = request.get_json()
+    data = request_json_object()
     user_id = data.get('userId')
     if not user_id:
         return jsonify({'status': 'error'}), 400
@@ -831,7 +1020,7 @@ def binance_sync_status(user_id):
 @require_firebase_user
 def binance_sync_now():
     """Trigger immediate sync for a user"""
-    data = request.get_json()
+    data = request_json_object()
     user_id = data.get('userId')
     api_key = data.get('apiKey', '')
     api_secret = data.get('apiSecret', '')
@@ -858,7 +1047,7 @@ def binance_sync_now():
 @require_firebase_user
 def binance_positions(user_id):
     """Get open positions for a user"""
-    data = request.get_json()
+    data = request_json_object()
     api_key = data.get('apiKey', '')
     api_secret = data.get('apiSecret', '')
     testnet = data.get('testnet', True)
