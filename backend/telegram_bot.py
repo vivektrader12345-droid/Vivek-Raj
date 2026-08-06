@@ -18,9 +18,6 @@ from dotenv import load_dotenv
 dotenv_path = os.path.join(os.path.dirname(__file__), ".env") 
 load_dotenv(dotenv_path)
 
-print(os.getenv("TELEGRAM_BOT_TOKEN"))
-print(os.getenv("TELEGRAM_CHAT_ID"))
-
 BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 
