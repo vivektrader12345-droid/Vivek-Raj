@@ -17,10 +17,11 @@ Setup:
 3. python app.py
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from datetime import datetime
 from functools import wraps
+import hmac
 import json
 import os
 import uuid
@@ -64,6 +65,37 @@ else:
 # Legacy webhook live execution is disabled by default. The v1 intelligence
 # system is the supported ingestion path and remains fail-closed for live orders.
 LEGACY_WEBHOOK_LIVE_ENABLED = os.environ.get('LEGACY_WEBHOOK_LIVE_ENABLED', 'false').lower() == 'true'
+LEGACY_ROUTES_ENABLED = os.environ.get('LEGACY_ROUTES_ENABLED', 'false').lower() == 'true'
+LEGACY_WEBHOOK_SECRET = os.environ.get('LEGACY_WEBHOOK_SECRET', '')
+
+
+SENSITIVE_LEGACY_FIELDS = {
+    'apikey', 'apisecret', 'authorization', 'accesstoken', 'key', 'password',
+    'privatekey', 'refreshtoken', 'secret', 'token', 'webhookkey',
+}
+
+
+def sanitize_legacy_payload(value, depth=0):
+    """Bound retained legacy data and redact credential-shaped fields."""
+    if depth > 4:
+        return '[truncated]'
+    if isinstance(value, dict):
+        sanitized = {}
+        for raw_key, item in list(value.items())[:100]:
+            key = str(raw_key)[:128]
+            normalized_key = ''.join(character for character in key.lower() if character.isalnum())
+            if normalized_key in SENSITIVE_LEGACY_FIELDS:
+                sanitized[key] = '[redacted]'
+            else:
+                sanitized[key] = sanitize_legacy_payload(item, depth + 1)
+        return sanitized
+    if isinstance(value, list):
+        return [sanitize_legacy_payload(item, depth + 1) for item in value[:100]]
+    if isinstance(value, str):
+        return value[:2048]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return str(value)[:2048]
 
 
 def require_firebase_user(handler):
@@ -95,6 +127,7 @@ def require_firebase_user(handler):
                 requested_uid = body.get('userId') or body.get('user_id')
         if requested_uid and str(requested_uid) != str(uid):
             return jsonify({'status': 'error', 'message': 'Forbidden'}), 403
+        g.auth_uid = str(uid)
         return handler(*args, **kwargs)
     return wrapped
 
@@ -416,7 +449,7 @@ def webhook_with_key(webhook_key):
         alert = {
             'id': f'alert_{int(datetime.now().timestamp() * 1000)}',
             'userId': user_id,
-            'data': data,
+            'data': sanitize_legacy_payload(data),
             'receivedAt': datetime.now().isoformat(),
             'mode': user_mode,
         }
@@ -441,89 +474,71 @@ def webhook_with_key(webhook_key):
 
 @app.route('/webhook', methods=['POST'])
 def webhook_legacy():
-    """Legacy webhook — always works, stores in memory + Firebase if available"""
+    """Compatibility webhook; disabled by default and never accepts anonymous trades."""
+    if not LEGACY_ROUTES_ENABLED:
+        return jsonify({
+            'status': 'error',
+            'message': 'Legacy webhook disabled; use /webhook/<user_key> or /webhook/v1/<endpoint_id>',
+        }), 410
+    if not LEGACY_WEBHOOK_SECRET:
+        return jsonify({'status': 'error', 'message': 'Legacy webhook unavailable'}), 503
+
+    provided_secret = request.headers.get('X-Legacy-Webhook-Secret', '')
+    if not provided_secret or not hmac.compare_digest(provided_secret, LEGACY_WEBHOOK_SECRET):
+        return jsonify({'status': 'error', 'message': 'Webhook authentication failed'}), 401
+
     try:
         if request.is_json:
-            data = request.get_json()
+            data = request.get_json(silent=True)
         else:
-            try:
-                data = json.loads(request.data.decode('utf-8'))
-            except:
-                data = {'message': request.data.decode('utf-8')}
+            data = json.loads(request.data.decode('utf-8'))
+        if not isinstance(data, dict):
+            return jsonify({'status': 'error', 'message': 'JSON object required'}), 400
 
-        # Create alert record
+        webhook_key = data.get('key', data.get('webhook_key', data.get('secret', '')))
+        if not webhook_key or not db:
+            return jsonify({'status': 'error', 'message': 'Valid user webhook key required'}), 401
+
+        user_id = None
+        user_mode = 'demo'
+        users_ref = db.collection('users')
+        query_result = users_ref.where('webhookKey', '==', webhook_key).limit(1).get()
+        for doc_snap in query_result:
+            user_id = doc_snap.id
+            user_data = doc_snap.to_dict()
+            user_mode = user_data.get('tradingMode', 'demo')
+            break
+        if not user_id:
+            return jsonify({'status': 'error', 'message': 'Valid user webhook key required'}), 401
+
         alert = {
             'id': f'alert_{int(datetime.now().timestamp() * 1000)}',
+            'userId': user_id,
             'action': data.get('action', 'ALERT'),
             'symbol': data.get('symbol', 'Unknown'),
             'price': data.get('price', 0),
             'qty': data.get('qty', data.get('quantity', data.get('amount', 1))),
             'leverage': data.get('leverage', 10),
-            'sl': data.get('sl', None),
-            'tp': data.get('tp', None),
-            'data': data,
+            'sl': data.get('sl'),
+            'tp': data.get('tp'),
+            'data': sanitize_legacy_payload(data),
             'receivedAt': datetime.now().isoformat(),
+            'mode': user_mode,
         }
-
-        # Store in memory (always works)
         memory_alerts.insert(0, alert)
-        if len(memory_alerts) > 200:
-            memory_alerts.pop()
+        del memory_alerts[200:]
+        db.collection('users').document(user_id).collection('webhook_alerts').add(alert)
 
-        print(f"[WEBHOOK] Received: {alert['action']} {alert['symbol']} @ ${alert['price']}")
-
-        # Try to find user by webhook key in the data
-        webhook_key = data.get('key', data.get('webhook_key', data.get('secret', '')))
-        user_id = None
-        user_mode = 'demo'
-
-        if webhook_key and db:
-            try:
-                users_ref = db.collection('users')
-                query_result = users_ref.where('webhookKey', '==', webhook_key).limit(1).get()
-                for doc_snap in query_result:
-                    user_id = doc_snap.id
-                    user_data = doc_snap.to_dict()
-                    user_mode = user_data.get('tradingMode', 'demo')
-                    break
-            except:
-                pass
-
-        # Execute trade
-        trade_result = None
-        if user_id:
-            if user_mode == 'live' and LEGACY_WEBHOOK_LIVE_ENABLED:
-                trade_result = execute_live_trade(user_id, data)
-            else:
-                trade_result = execute_demo_trade(user_id, data)
+        print(f"[WEBHOOK] User: {user_id} | Action: {alert['action']} | Symbol: {alert['symbol']}")
+        if user_mode == 'live' and LEGACY_WEBHOOK_LIVE_ENABLED:
+            trade_result = execute_live_trade(user_id, data)
         else:
-            # No user — store as demo trade in memory
-            trade = {
-                'id': alert['id'],
-                'symbol': alert['symbol'],
-                'side': 'buy' if 'buy' in str(alert['action']).lower() else 'sell',
-                'entryPrice': float(alert['price']) if alert['price'] else 0,
-                'quantity': float(alert['qty']),
-                'leverage': int(alert['leverage']),
-                'stopLoss': alert['sl'],
-                'takeProfit': alert['tp'],
-                'status': 'open',
-                'mode': 'demo',
-                'source': 'tradingview',
-                'openedAt': datetime.now().isoformat(),
-            }
-            memory_trades.insert(0, trade)
-            trade_result = {'status': 'executed', 'mode': 'demo (memory)', 'trade': trade}
+            trade_result = execute_demo_trade(user_id, data)
 
-        return jsonify({
-            'status': 'success',
-            'alert': alert,
-            'trade': trade_result,
-        }), 200
-
-    except Exception as e:
-        print(f"[ERROR] Webhook: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 400
+        return jsonify({'status': 'success', 'alert': alert, 'trade': trade_result}), 200
+    except Exception:
+        print('[ERROR] Legacy webhook processing failed')
+        return jsonify({'status': 'error', 'message': 'Webhook processing failed'}), 400
 
 
 @app.route('/api/portfolio/<user_id>', methods=['GET'])
@@ -716,16 +731,20 @@ def health():
 
 
 @app.route('/alerts', methods=['GET'])
+@require_firebase_user
 def get_alerts():
-    """Get recent alerts from memory"""
-    limit = request.args.get('limit', 50, type=int)
-    return jsonify({'alerts': memory_alerts[:limit], 'total': len(memory_alerts)})
+    """Get only the authenticated tenant's retained legacy alerts."""
+    limit = max(1, min(request.args.get('limit', 50, type=int), 200))
+    alerts = [item for item in memory_alerts if str(item.get('userId')) == g.auth_uid]
+    return jsonify({'alerts': alerts[:limit], 'total': len(alerts)})
 
 
 @app.route('/trades', methods=['GET'])
+@require_firebase_user
 def get_memory_trades():
-    """Get trades from memory"""
-    return jsonify({'trades': memory_trades, 'total': len(memory_trades)})
+    """Get only the authenticated tenant's retained legacy trades."""
+    trades = [item for item in memory_trades if str(item.get('userId')) == g.auth_uid]
+    return jsonify({'trades': trades, 'total': len(trades)})
 
 
 # ==================== BINANCE SYNC ENDPOINTS ====================
