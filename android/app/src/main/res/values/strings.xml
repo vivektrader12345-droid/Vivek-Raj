@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Vivek Marco Trader</string>
+    <string name="title_activity_main">Vivek Marco Trader</string>
+    <string name="package_name">com.vivekmarco.trader</string>
+    <string name="custom_url_scheme">com.vivekmarco.trader</string>
+</resources>

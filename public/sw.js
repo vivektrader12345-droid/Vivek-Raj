@@ -94,6 +94,7 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(request.url)
   if (url.origin !== self.location.origin || isSensitiveRequest(request, url)) return
+  if (url.pathname === '/downloads/vivek-marco-trader.apk') return
 
   if (request.mode === 'navigate') {
     event.respondWith(networkFirstNavigation(request))

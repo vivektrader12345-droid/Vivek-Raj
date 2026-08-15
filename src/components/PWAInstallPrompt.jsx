@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Download, MoreVertical, X } from 'lucide-react'
+import { classifyAndroidPlatform, selectAndroidApk } from './pwaInstallSelection.js'
 
 function isStandalone() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
@@ -77,6 +78,11 @@ function PWAInstallPrompt() {
   if (installed) return null
 
   const downloadApp = async () => {
+    if (classifyAndroidPlatform(window.navigator)) {
+      selectAndroidApk(document)
+      return
+    }
+
     if (!installEvent) {
       setShowInstructions(true)
       return

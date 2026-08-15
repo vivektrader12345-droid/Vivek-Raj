@@ -22,9 +22,15 @@
     "test:terminal:portals": "node --test tests/terminal/portalPrimitives.test.js",
     "test:terminal:paper-quote": "node --test tests/terminal/paperQuoteFlow.test.js",
     "test:terminal:hud-safe-zones": "node --test tests/terminal/chartHudSafeZones.test.js",
+    "android:sync": "node scripts/sync-android.mjs",
+    "android:gradle": "node scripts/run-android-gradle.mjs",
+    "scan:release-secrets": "node scripts/scan-release-secrets.mjs --staged",
+    "test:android-release-security": "node --test tests/androidReleaseSecurity.test.js",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "8.5.0",
+    "@capacitor/core": "8.5.0",
     "@emailjs/browser": "^4.4.1",
     "firebase": "^12.16.0",
     "lightweight-charts": "^4.1.1",
@@ -37,6 +43,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.0",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@vitejs/plugin-react": "^4.2.1",

@@ -1,0 +1,135 @@
+import java.security.KeyStore
+import java.security.MessageDigest
+import java.util.Arrays
+import java.util.Properties
+
+final String approvedSignerClassification = 'approved-release'
+final String approvedCertificateSha256 = 'BB996DAFB55BE208C0CE30782F5D22ED5E1674646175E1828B3583BD290C6483'
+final Map<String, String> signingEnvironment = [
+    storePath: 'VMT_ANDROID_KEYSTORE_PATH',
+    keyAlias: 'VMT_ANDROID_KEY_ALIAS',
+    storePassword: 'VMT_ANDROID_KEYSTORE_PASSWORD',
+    keyPassword: 'VMT_ANDROID_KEY_PASSWORD',
+    signerClassification: 'VMT_ANDROID_SIGNER_CLASSIFICATION',
+    storeType: 'VMT_ANDROID_KEYSTORE_TYPE',
+]
+final Map<String, String> signingProperties = [
+    storePath: 'storeFile',
+    keyAlias: 'keyAlias',
+    storePassword: 'storePassword',
+    keyPassword: 'keyPassword',
+    signerClassification: 'signerClassification',
+    storeType: 'storeType',
+]
+
+def loadSigningInputs = {
+    String propertiesPath = System.getenv('VMT_ANDROID_SIGNING_PROPERTIES')
+    boolean hasDirectEnvironment = signingEnvironment.values().any { System.getenv(it) != null }
+
+    if (propertiesPath && hasDirectEnvironment) {
+        throw new GradleException('Use exactly one Android signing input source')
+    }
+
+    Map<String, String> inputs = [:]
+    if (propertiesPath) {
+        File inputFile = new File(propertiesPath)
+        if (!inputFile.isAbsolute() || !inputFile.isFile()) {
+            throw new GradleException('Android signing properties must be an existing absolute external file')
+        }
+        Properties localProperties = new Properties()
+        inputFile.withInputStream { localProperties.load(it) }
+        signingProperties.each { inputName, propertyName ->
+            inputs[inputName] = localProperties.getProperty(propertyName)
+        }
+    } else if (hasDirectEnvironment) {
+        signingEnvironment.each { inputName, environmentName ->
+            inputs[inputName] = System.getenv(environmentName)
+        }
+    } else {
+        return null
+    }
+
+    ['storePath', 'keyAlias', 'storePassword', 'keyPassword', 'signerClassification'].each { inputName ->
+        if (!inputs[inputName]) {
+            throw new GradleException('Android release signing inputs are incomplete')
+        }
+    }
+    if (inputs.signerClassification != approvedSignerClassification) {
+        throw new GradleException('Android signer classification does not match the approved release gate')
+    }
+
+    File store = new File(inputs.storePath)
+    if (!store.isAbsolute() || !store.isFile()) {
+        throw new GradleException('Android keystore must be an existing absolute external file')
+    }
+    inputs.storeType = inputs.storeType ?: KeyStore.getDefaultType()
+    inputs.storePath = store.absolutePath
+    return inputs
+}
+
+def validateApprovedSigner = { Map<String, String> inputs ->
+    char[] storePassword = inputs.storePassword.toCharArray()
+    char[] keyPassword = inputs.keyPassword.toCharArray()
+    try {
+        KeyStore keyStore = KeyStore.getInstance(inputs.storeType)
+        new File(inputs.storePath).withInputStream { keyStore.load(it, storePassword) }
+        if (!keyStore.isKeyEntry(inputs.keyAlias)) {
+            throw new GradleException('Android release signing validation failed')
+        }
+        keyStore.getKey(inputs.keyAlias, keyPassword)
+        byte[] certificate = keyStore.getCertificate(inputs.keyAlias)?.encoded
+        String actualFingerprint = certificate == null ? '' : MessageDigest.getInstance('SHA-256')
+            .digest(certificate)
+            .collect { String.format('%02X', it & 0xff) }
+            .join('')
+        if (actualFingerprint != approvedCertificateSha256) {
+            throw new GradleException('Android signing certificate does not match the approved release gate')
+        }
+    } catch (GradleException error) {
+        throw error
+    } catch (Exception ignored) {
+        throw new GradleException('Android release signing validation failed')
+    } finally {
+        Arrays.fill(storePassword, (char) 0)
+        Arrays.fill(keyPassword, (char) 0)
+    }
+}
+
+Map<String, String> releaseSigningInputs = loadSigningInputs()
+if (releaseSigningInputs != null) {
+    validateApprovedSigner(releaseSigningInputs)
+    android.signingConfigs.create('vmtRelease') {
+        storeFile project.file(releaseSigningInputs.storePath)
+        keyAlias releaseSigningInputs.keyAlias
+        storePassword releaseSigningInputs.storePassword
+        keyPassword releaseSigningInputs.keyPassword
+        storeType releaseSigningInputs.storeType
+        enableV1Signing true
+        enableV2Signing true
+    }
+    android.buildTypes.release.signingConfig = android.signingConfigs.vmtRelease
+}
+
+def signingPreflight = tasks.register('verifyReleaseSigning') {
+    group = 'verification'
+    description = 'Fails unless approved external Android release signing inputs are valid.'
+    doLast {
+        if (releaseSigningInputs == null) {
+            throw new GradleException('Android release signing inputs are required')
+        }
+        logger.lifecycle('Android release signing preflight passed')
+    }
+}
+
+tasks.configureEach { candidate ->
+    String normalizedName = candidate.name.toLowerCase(Locale.ROOT)
+    boolean createsReleaseArtifact = normalizedName.contains('release') && (
+        normalizedName.startsWith('assemble') ||
+        normalizedName.startsWith('bundle') ||
+        normalizedName.startsWith('package') ||
+        normalizedName.startsWith('publish') ||
+        normalizedName.startsWith('install') ||
+        normalizedName.startsWith('sign')
+    )
+    if (createsReleaseArtifact) candidate.dependsOn(signingPreflight)
+}

@@ -22,6 +22,24 @@ dist
 dist-ssr
 *.local
 
+# Android local toolchain, signing inputs, and generated output
+/android/local.properties
+/android/*signing*.properties
+/android/**/*.jks
+/android/**/*.keystore
+/android/**/*.p12
+/android/**/*.pfx
+/android/.gradle/
+/android/**/build/
+/android/.externalNativeBuild/
+/android/**/.cxx/
+/android/reports/
+/android/**/reports/
+/test-results/android/
+
+# Public Android release asset remains trackable
+!/public/downloads/vivek-marco-trader.apk
+
 # Editor
 .vscode/*
 !.vscode/extensions.json
