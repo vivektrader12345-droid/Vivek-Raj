@@ -6,7 +6,7 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
-    healthCheckPath: /health
+    healthCheckPath: /ready
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
@@ -14,6 +14,14 @@ services:
         value: vivek-crypto-trader-b8d19
       - key: GOOGLE_APPLICATION_CREDENTIALS
         value: /etc/secrets/serviceAccountKey.json
+      - key: OTP_HMAC_SECRET
+        sync: false
+      - key: EMAILJS_SERVICE_ID
+        sync: false
+      - key: EMAILJS_TEMPLATE_ID
+        sync: false
+      - key: EMAILJS_PUBLIC_KEY
+        sync: false
       - key: WEBHOOK_BASE_URL
         value: https://vivek-raj.onrender.com
       - key: WEBHOOK_LIVE_EXECUTION_ENABLED
@@ -28,3 +36,15 @@ services:
         value: "false"
       - key: USE_TESTNET
         value: "true"
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: BILLING_ADMIN_EMAILS
+        sync: false
+      - key: BILLING_CHECKOUT_TTL_MINUTES
+        value: "20"
+      - key: BILLING_ALLOW_ZERO_AMOUNT
+        value: "false"

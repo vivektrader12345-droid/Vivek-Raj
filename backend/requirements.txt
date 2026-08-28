@@ -5,3 +5,4 @@ ccxt==4.5.68
 requests==2.34.2
 gunicorn==21.2.0
 firebase-admin==6.4.0
+razorpay==2.0.1

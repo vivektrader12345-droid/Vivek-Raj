@@ -52,6 +52,36 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Canonical billing state is Admin-SDK-only. Keep these explicit even
+    // though the final catch-all also denies unknown top-level collections.
+    match /billing_coupons/{document=**} {
+      allow read, write: if false;
+    }
+    match /billing_coupon_user_usage/{document=**} {
+      allow read, write: if false;
+    }
+    match /billing_orders/{document=**} {
+      allow read, write: if false;
+    }
+    match /billing_provider_orders/{document=**} {
+      allow read, write: if false;
+    }
+    match /billing_payments/{document=**} {
+      allow read, write: if false;
+    }
+    match /billing_payment_attempts/{document=**} {
+      allow read, write: if false;
+    }
+    match /billing_subscriptions/{document=**} {
+      allow read, write: if false;
+    }
+    match /billing_coupon_redemptions/{document=**} {
+      allow read, write: if false;
+    }
+    match /billing_webhook_events/{document=**} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

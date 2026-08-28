@@ -273,7 +273,15 @@ if 'webhook_intelligence' not in app.blueprints:
         db,
         base_url=os.environ.get('WEBHOOK_BASE_URL'),
         firebase_app=firebase_app,
+        enforce_entitlements=True,
     ))
+
+# Server-owned Razorpay billing APIs use top-level Admin-only collections.
+from billing_api import create_billing_blueprint
+
+billing_blueprint = create_billing_blueprint(db, firebase_app=firebase_app)
+if 'razorpay_billing' not in app.blueprints:
+    app.register_blueprint(billing_blueprint)
 
 # ===== IN-MEMORY STORAGE (fallback when Firebase not available) =====
 memory_alerts = []
@@ -916,16 +924,45 @@ def connect_user_exchange(user_id):
     })
 
 
+def _otp_readiness():
+    return {
+        'firebaseAuth': firebase_app is not None,
+        'firestore': db is not None,
+        'hmacSecret': len(os.environ.get('OTP_HMAC_SECRET', '').strip()) >= 32,
+        'emailProvider': all(
+            os.environ.get(key, '').strip()
+            for key in ('EMAILJS_SERVICE_ID', 'EMAILJS_TEMPLATE_ID', 'EMAILJS_PUBLIC_KEY')
+        ),
+    }
+
+
 @app.route('/health', methods=['GET'])
 def health():
+    billing_components = dict(getattr(billing_blueprint, 'billing_readiness', {}))
+    billing_components['ready'] = all(billing_components.values()) if billing_components else False
+    otp_components = _otp_readiness()
+    otp_components['ready'] = all(otp_components.values())
     return jsonify({
-        'status': 'healthy',
+        'status': 'healthy' if otp_components['ready'] else 'degraded',
         'exchange': exchange_registry.connected_count() > 0,
-        'firebase': db is not None,
+        'firebase': firebase_app is not None and db is not None,
+        'otp': otp_components,
+        'billing': billing_components,
         'alerts_count': len(memory_alerts),
         'trades_count': len(memory_trades),
         'timestamp': datetime.now().isoformat(),
     })
+
+
+@app.route('/ready', methods=['GET'])
+def ready():
+    otp_components = _otp_readiness()
+    ready_status = all(otp_components.values())
+    return jsonify({
+        'status': 'ready' if ready_status else 'not_ready',
+        'otp': {**otp_components, 'ready': ready_status},
+        'timestamp': datetime.now().isoformat(),
+    }), 200 if ready_status else 503
 
 
 @app.route('/alerts', methods=['GET'])
