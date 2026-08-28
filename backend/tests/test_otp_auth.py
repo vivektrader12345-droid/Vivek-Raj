@@ -22,6 +22,8 @@ class FakeDocument:
         self.key = key
 
     def get(self, transaction=None):
+        if transaction is not None and not transaction.in_progress:
+            raise ValueError("Transaction not in progress")
         return FakeSnapshot(self.store.get(self.key))
 
     def set(self, value):
@@ -35,17 +37,59 @@ class FakeDocument:
 
 
 class FakeTransaction:
+    def __init__(self):
+        self.in_progress = False
+        self._writes = []
+
+    def begin(self):
+        if self.in_progress:
+            raise ValueError("Transaction already in progress")
+        self.in_progress = True
+
+    def _stage(self, operation, reference, value=None):
+        if not self.in_progress:
+            raise ValueError("Transaction not in progress")
+        self._writes.append((operation, reference, value))
+
     def set(self, reference, value):
-        reference.set(value)
+        self._stage("set", reference, dict(value))
 
     def update(self, reference, value):
-        reference.update(value)
+        self._stage("update", reference, dict(value))
 
     def delete(self, reference):
-        reference.delete()
+        self._stage("delete", reference)
 
     def commit(self):
-        return None
+        if not self.in_progress:
+            raise ValueError("Transaction not in progress")
+        for operation, reference, value in self._writes:
+            if operation == "set":
+                reference.set(value)
+            elif operation == "update":
+                reference.update(value)
+            else:
+                reference.delete()
+        self._writes.clear()
+        self.in_progress = False
+
+    def rollback(self):
+        self._writes.clear()
+        self.in_progress = False
+
+
+def fake_transactional(callback):
+    def wrapped(transaction, *args, **kwargs):
+        transaction.begin()
+        try:
+            result = callback(transaction, *args, **kwargs)
+            transaction.commit()
+            return result
+        except Exception:
+            transaction.rollback()
+            raise
+
+    return wrapped
 
 
 class FakeCollection:
@@ -96,6 +140,11 @@ class OtpAuthenticationTests(unittest.TestCase):
         )
         self.environment.start()
         self.addCleanup(self.environment.stop)
+        self.transactional = patch(
+            "otp_auth.firestore.transactional", new=fake_transactional
+        )
+        self.transactional.start()
+        self.addCleanup(self.transactional.stop)
 
     @patch("otp_auth._send_emailjs_otp")
     @patch("otp_auth.secrets.randbelow", return_value=23456)

@@ -10,7 +10,7 @@ import time
 from typing import Any, Dict, Optional, Tuple
 
 import requests
-from firebase_admin import auth as firebase_auth
+from firebase_admin import auth as firebase_auth, firestore
 from flask import Blueprint, jsonify, request
 
 OTP_EXPIRY_SECONDS = 5 * 60
@@ -21,6 +21,11 @@ EMAILJS_ENDPOINT = "https://api.emailjs.com/api/v1.0/email/send"
 
 def _error(message: str, status: int):
     return jsonify({"success": False, "message": message}), status
+
+
+def _log_safe_failure(event: str, error: Exception) -> None:
+    """Log failure type without leaking credentials, OTPs, or provider responses."""
+    print(f"[WARN] {event} ({type(error).__name__})", flush=True)
 
 
 def _authenticate(firebase_app) -> Tuple[Optional[Dict[str, Any]], Optional[Tuple[Any, int]]]:
@@ -100,8 +105,10 @@ def create_otp_blueprint(db, firebase_app=None) -> Blueprint:
         code = f"{secrets.randbelow(900000) + 100000:06d}"
         nonce = secrets.token_urlsafe(16)
         transaction = db.transaction()
-        try:
-            existing = challenge_ref.get(transaction=transaction)
+
+        @firestore.transactional
+        def store_challenge(active_transaction):
+            existing = challenge_ref.get(transaction=active_transaction)
             if existing.exists:
                 last_sent_at = int((existing.to_dict() or {}).get("lastSentAt", 0))
                 retry_after = OTP_RESEND_SECONDS - (now - last_sent_at)
@@ -114,7 +121,7 @@ def create_otp_blueprint(db, firebase_app=None) -> Blueprint:
                     response.status_code = 429
                     response.headers["Retry-After"] = str(retry_after)
                     return response
-            transaction.set(challenge_ref, {
+            active_transaction.set(challenge_ref, {
                 "uid": uid,
                 "email": email,
                 "authTime": auth_time,
@@ -125,13 +132,20 @@ def create_otp_blueprint(db, firebase_app=None) -> Blueprint:
                 "lastSentAt": now,
                 "verificationPending": False,
             })
-            transaction.commit()
-        except Exception:
+            return None
+
+        try:
+            transaction_result = store_challenge(transaction)
+        except Exception as error:
+            _log_safe_failure("otp_challenge_store_failed", error)
             return _error("OTP service unavailable", 503)
+        if transaction_result is not None:
+            return transaction_result
 
         try:
             _send_emailjs_otp(email, code)
-        except Exception:
+        except Exception as error:
+            _log_safe_failure("otp_email_send_failed", error)
             challenge_ref.delete()
             return _error("Unable to send OTP. Please try again later.", 503)
 
@@ -159,25 +173,24 @@ def create_otp_blueprint(db, firebase_app=None) -> Blueprint:
         challenge_ref = db.collection("otp_challenges").document(uid)
         transaction = db.transaction()
         now = int(time.time())
-        try:
-            snapshot = challenge_ref.get(transaction=transaction)
+
+        @firestore.transactional
+        def check_challenge(active_transaction):
+            snapshot = challenge_ref.get(transaction=active_transaction)
             if not snapshot.exists:
                 return _error("No OTP found. Please request a new one.", 404)
 
             challenge = snapshot.to_dict() or {}
             if auth_time <= 0 or int(challenge.get("authTime", 0)) != auth_time:
-                transaction.delete(challenge_ref)
-                transaction.commit()
+                active_transaction.delete(challenge_ref)
                 return _error("OTP belongs to another sign-in session. Request a new one.", 409)
             if now > int(challenge.get("expiresAt", 0)):
-                transaction.delete(challenge_ref)
-                transaction.commit()
+                active_transaction.delete(challenge_ref)
                 return _error("OTP expired. Please request a new one.", 410)
 
             attempts = int(challenge.get("attempts", 0))
             if attempts >= OTP_MAX_ATTEMPTS:
-                transaction.delete(challenge_ref)
-                transaction.commit()
+                active_transaction.delete(challenge_ref)
                 return _error("Too many attempts. Please request a new OTP.", 429)
 
             expected = str(challenge.get("codeHash", ""))
@@ -185,18 +198,23 @@ def create_otp_blueprint(db, firebase_app=None) -> Blueprint:
             if not hmac.compare_digest(expected, actual):
                 attempts += 1
                 if attempts >= OTP_MAX_ATTEMPTS:
-                    transaction.delete(challenge_ref)
+                    active_transaction.delete(challenge_ref)
                 else:
-                    transaction.update(challenge_ref, {"attempts": attempts})
-                transaction.commit()
+                    active_transaction.update(challenge_ref, {"attempts": attempts})
                 if attempts >= OTP_MAX_ATTEMPTS:
                     return _error("Too many attempts. Please request a new OTP.", 429)
                 return _error("Invalid OTP. Please try again.", 401)
 
-            transaction.update(challenge_ref, {"verificationPending": True})
-            transaction.commit()
-        except Exception:
+            active_transaction.update(challenge_ref, {"verificationPending": True})
+            return None
+
+        try:
+            transaction_result = check_challenge(transaction)
+        except Exception as error:
+            _log_safe_failure("otp_challenge_verify_failed", error)
             return _error("OTP service unavailable", 503)
+        if transaction_result is not None:
+            return transaction_result
 
         try:
             user_record = firebase_auth.get_user(uid, app=firebase_app)
