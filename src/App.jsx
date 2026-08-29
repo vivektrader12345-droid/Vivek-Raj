@@ -69,13 +69,13 @@ function App() {
                       <Routes>
                         <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
                         <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-                        <Route path="/subscription" element={<ProtectedRoute><Subscription /></ProtectedRoute>} />
                         <Route path="/payment-success" element={<ProtectedRoute><PaymentSuccess /></ProtectedRoute>} />
                         <Route path="/payment-pending" element={<ProtectedRoute><PaymentPending /></ProtectedRoute>} />
                         <Route path="/payment-failed" element={<ProtectedRoute><PaymentFailed /></ProtectedRoute>} />
                         <Route path="/pro-trading" element={<ProtectedRoute><SubscriptionRoute requiredPlan="elite"><ProTrading /></SubscriptionRoute></ProtectedRoute>} />
                         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
                           <Route index element={<Dashboard />} />
+                          <Route path="subscription" element={<Subscription />} />
                           <Route path="add-trade" element={<AddTrade />} />
                           <Route path="edit-trade/:id" element={<AddTrade />} />
                           <Route path="history" element={<TradeHistory />} />

@@ -26,28 +26,38 @@ export function SubscriptionProvider({ children }) {
   const refresh = useCallback(async ({ silent = false } = {}) => {
     if (!user) return
     const generation = ++requestGeneration.current
-    if (!silent) setLoading(true)
-    setError('')
+    if (!silent) {
+      setLoading(true)
+      setError('')
+    }
     try {
-      const [plansResponse, meResponse] = await Promise.all([
+      const [plansResult, meResult] = await Promise.allSettled([
         billingService.getPlans(),
         billingService.getMe(),
       ])
       if (generation !== requestGeneration.current) return
-      setPlans(plansResponse.plans || [])
-      setSubscription(meResponse.subscription || inactiveSubscription)
-      setIsAdmin(Boolean(meResponse.isAdmin))
-      setEntitlementNow(Date.now())
-    } catch (refreshError) {
-      if (generation !== requestGeneration.current) return
-      if (!silent) {
-        setError(refreshError.message || 'Unable to load subscription information.')
+
+      if (plansResult.status === 'fulfilled') {
+        setPlans(plansResult.value.plans || [])
+      }
+      if (meResult.status === 'fulfilled') {
+        setSubscription(meResult.value.subscription || inactiveSubscription)
+        setIsAdmin(Boolean(meResult.value.isAdmin))
+      } else if (!silent) {
         setSubscription(inactiveSubscription)
         setIsAdmin(false)
       }
+
+      const failure = [meResult, plansResult].find(result => result.status === 'rejected')
+      if (failure) {
+        if (!silent) setError(failure.reason?.message || 'Unable to load subscription information.')
+      } else {
+        setError('')
+      }
+      setEntitlementNow(Date.now())
     } finally {
       if (generation === requestGeneration.current) {
-        if (!silent) setLoading(false)
+        setLoading(false)
         setInitialized(true)
       }
     }
