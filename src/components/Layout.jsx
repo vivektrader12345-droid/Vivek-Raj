@@ -1,18 +1,21 @@
 import React, { useState } from 'react'
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useSubscription } from '../context/SubscriptionContext'
 import { useAlerts } from '../context/AlertContext'
 import { useTheme } from '../context/ThemeContext'
 import { useCurrency } from '../context/CurrencyContext'
 import ErrorBoundary from './ErrorBoundary'
+import { selectAndroidApk } from './pwaInstallSelection.js'
 import {
   LayoutDashboard, PlusCircle, History, BarChart3, Briefcase,
   LogOut, Menu, X, Settings, Bell, ChevronLeft, CalendarDays, Sun, Moon, Bot,
-  LineChart as LineChartIcon, RadioTower
+  LineChart as LineChartIcon, RadioTower, Download, CreditCard, Crown, Lock, Tags
 } from 'lucide-react'
 
 function Layout() {
   const { user, logout } = useAuth()
+  const { subscription, active: subscriptionActive, isAdmin, hasPlan } = useSubscription()
   const { alerts } = useAlerts()
   const { theme, toggleTheme } = useTheme()
   const { currency, toggleCurrency, exchangeRate } = useCurrency()
@@ -23,6 +26,11 @@ function Layout() {
 
   const activeAlerts = alerts.filter(a => a.active && !a.triggered).length
 
+  const handleDownload = () => {
+    setSidebarOpen(false)
+    selectAndroidApk(document)
+  }
+
   const handleLogout = () => {
     logout()
     navigate('/login')
@@ -30,15 +38,21 @@ function Layout() {
 
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/subscription', icon: Crown, label: 'Subscription' },
+    { to: '/payments', icon: CreditCard, label: 'Payment History' },
     { to: '/add-trade', icon: PlusCircle, label: 'Add Trade' },
     { to: '/history', icon: History, label: 'Trade History' },
-    { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+    { to: '/analytics', icon: BarChart3, label: 'Analytics', requiredPlan: 'pro' },
     { to: '/calendar', icon: CalendarDays, label: 'Calendar' },
-    { to: '/algo-trading', icon: Bot, label: 'Algo Trading' },
-    { to: '/webhook-intelligence', icon: RadioTower, label: 'Webhook Intelligence' },
-    { to: '/pro-trading', icon: LineChartIcon, label: '⚡ Pro Trading' },
+    { to: '/algo-trading', icon: Bot, label: 'Algo Trading', requiredPlan: 'pro' },
+    { to: '/webhook-intelligence', icon: RadioTower, label: 'Webhook Intelligence', requiredPlan: 'pro' },
+    { to: '/pro-trading', icon: LineChartIcon, label: '⚡ Pro Trading', requiredPlan: 'elite' },
     { to: '/portfolio', icon: Briefcase, label: 'Portfolio' },
     { to: '/alerts', icon: Bell, label: 'Alerts', badge: activeAlerts },
+    ...(isAdmin ? [
+      { to: '/admin/plans', icon: Crown, label: 'Plan Admin' },
+      { to: '/admin/coupons', icon: Tags, label: 'Coupon Admin' },
+    ] : []),
     { to: '/settings', icon: Settings, label: 'Settings' },
   ]
 
@@ -46,6 +60,10 @@ function Layout() {
     <div className="min-h-screen bg-[#060612] flex">
       {/* Mobile menu button */}
       <button
+        type="button"
+        aria-label={sidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
+        aria-expanded={sidebarOpen}
+        aria-controls="app-sidebar"
         className="lg:hidden fixed top-4 left-4 z-50 bg-[#1a1a2e] p-2.5 rounded-lg border border-[#0f3460] shadow-lg"
         onClick={() => setSidebarOpen(!sidebarOpen)}
       >
@@ -53,7 +71,7 @@ function Layout() {
       </button>
 
       {/* Sidebar */}
-      <aside className={`fixed lg:static inset-y-0 left-0 z-40 ${collapsed ? 'w-20' : 'w-72'} bg-gradient-to-b from-[#0a0a1f] via-[#12122a] to-[#0a0a1f] border-r border-[#2a2a5a]/30 transform transition-all duration-300 flex flex-col ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+      <aside id="app-sidebar" className={`fixed lg:static inset-y-0 left-0 z-40 ${collapsed ? 'w-20' : 'w-72'} bg-gradient-to-b from-[#0a0a1f] via-[#12122a] to-[#0a0a1f] border-r border-[#2a2a5a]/30 transform transition-all duration-300 flex flex-col ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         {/* Header */}
         <div className={`p-5 border-b border-[#2a2a5a]/30 ${collapsed ? 'px-3' : ''}`}>
           <div className="flex items-center gap-3">
@@ -78,6 +96,9 @@ function Layout() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-white font-medium truncate">{user?.fullName}</p>
                   <p className="text-xs text-gray-400 truncate">{user?.email}</p>
+                  <span className={`mt-1.5 inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${subscriptionActive ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'}`}>
+                    <Crown size={10} /> {subscriptionActive ? `${subscription?.planId} active` : 'Upgrade plan'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -86,34 +107,50 @@ function Layout() {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto">
-          {navItems.map(({ to, icon: Icon, label, badge }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === '/'}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative ${
-                  isActive
-                    ? 'nav-active'
-                    : 'text-gray-400 hover:text-white hover:bg-[#2a2a5a]/20'
-                } ${collapsed ? 'justify-center px-3' : ''}`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#e94560] rounded-r-full"></div>}
-                  <Icon size={20} />
-                  {!collapsed && <span className="text-sm font-medium">{label}</span>}
-                  {badge > 0 && (
-                    <span className={`${collapsed ? 'absolute -top-1 -right-1' : 'ml-auto'} bg-[#e94560] text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold`}>
-                      {badge}
-                    </span>
-                  )}
-                </>
-              )}
-            </NavLink>
-          ))}
+          {navItems.map(({ to, icon: Icon, label, badge, requiredPlan }) => {
+            const locked = requiredPlan && !hasPlan(requiredPlan)
+            const target = locked ? '/subscription' : to
+            return (
+              <NavLink
+                key={to}
+                to={target}
+                end={to === '/'}
+                title={locked ? `${label} requires an active subscription` : undefined}
+                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative ${
+                    isActive && !locked
+                      ? 'nav-active'
+                      : 'text-gray-400 hover:text-white hover:bg-[#2a2a5a]/20'
+                  } ${collapsed ? 'justify-center px-3' : ''}`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    {isActive && !locked && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#e94560] rounded-r-full"></div>}
+                    <Icon size={20} />
+                    {!collapsed && <span className="text-sm font-medium">{label}</span>}
+                    {locked && <Lock size={14} className={collapsed ? 'absolute -right-1 -top-1 text-amber-400' : 'ml-auto text-amber-400'} aria-label="Subscription required" />}
+                    {badge > 0 && (
+                      <span className={`${collapsed ? 'absolute -top-1 -right-1' : 'ml-auto'} bg-[#e94560] text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold`}>
+                        {badge}
+                      </span>
+                    )}
+                  </>
+                )}
+              </NavLink>
+            )
+          })}
+          <button
+            type="button"
+            data-pwa-install
+            onClick={handleDownload}
+            title={collapsed ? 'Download App' : undefined}
+            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-gray-400 transition-all duration-200 hover:bg-[#2a2a5a]/20 hover:text-white ${collapsed ? 'justify-center px-3' : ''}`}
+          >
+            <Download size={20} aria-hidden="true" />
+            {!collapsed && <span className="text-sm font-medium">Download App</span>}
+          </button>
         </nav>
 
         {/* Theme Toggle & Collapse */}

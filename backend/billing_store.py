@@ -12,12 +12,16 @@ from billing_core import (
     BillingError,
     MAX_CLIENT_FAILURE_ATTEMPTS,
     evaluate_coupon,
+    normalize_plan_input,
+    plan_from_record,
     public_coupon,
     utc_now,
 )
 
 
 COLLECTIONS = {
+    "plans": "billing_plans",
+    "plan_catalog": "billing_plan_catalog",
     "coupons": "billing_coupons",
     "coupon_users": "billing_coupon_user_usage",
     "orders": "billing_orders",
@@ -45,9 +49,114 @@ class FirestoreBillingStore:
         if db is None:
             raise ValueError("A Firestore client is required")
         self.db = db
+        self.persisted_plans_required = False
 
     def _ref(self, key, document_id):
         return self.db.collection(COLLECTIONS[key]).document(str(document_id))
+
+    def require_persisted_plans(self):
+        self.persisted_plans_required = True
+
+    def seed_plans_if_empty(self, plans):
+        records = [normalize_plan_input(value) for value in plans]
+        sentinel_ref = self._ref("plan_catalog", "catalog")
+        transaction = self.db.transaction()
+
+        @firestore.transactional
+        def seed(transaction):
+            sentinel = _data(sentinel_ref.get(transaction=transaction))
+            if sentinel:
+                return False
+            existing = list(self.db.collection(COLLECTIONS["plans"]).stream(transaction=transaction))
+            now = utc_now()
+            if not existing:
+                for record in records:
+                    value = deepcopy(record)
+                    value.update({"revision": max(1, value.get("revision", 0)), "createdAt": now, "updatedAt": now})
+                    transaction.set(self._ref("plans", value["id"]), value)
+            transaction.set(sentinel_ref, {"initialized": True, "initializedAt": now, "updatedAt": now})
+            return not existing
+
+        return seed(transaction)
+
+    def list_plans(self, include_inactive=False):
+        values = [_data(snapshot) for snapshot in self.db.collection(COLLECTIONS["plans"]).stream()]
+        values = [
+            value for value in values
+            if value and (include_inactive or value.get("active") is True)
+        ]
+        return sorted(values, key=lambda item: (item.get("sortOrder", 0), item["id"]))
+
+    def get_plan(self, plan_id, include_inactive=False):
+        value = _data(self._ref("plans", str(plan_id or "").strip().lower()).get())
+        if not value or (not include_inactive and value.get("active") is not True):
+            return None
+        return value
+
+    def put_plan(self, plan, create_only=False, expected_revision=None):
+        record = normalize_plan_input(plan)
+        ref = self._ref("plans", record["id"])
+        transaction = self.db.transaction()
+
+        @firestore.transactional
+        def update(transaction):
+            prior = _data(ref.get(transaction=transaction))
+            if create_only and prior:
+                raise BillingError("plan_exists", "A plan with this ID already exists", 409)
+            if expected_revision is not None and (not prior or int(prior.get("revision", 0)) != expected_revision):
+                raise BillingError("plan_conflict", "This plan changed while you were editing it. Reload and try again", 409)
+            now = utc_now()
+            value = deepcopy(record)
+            value["revision"] = int((prior or {}).get("revision", 0)) + 1
+            value["createdAt"] = (prior or {}).get("createdAt", now)
+            value["updatedAt"] = now
+            transaction.set(ref, value)
+            return {"id": record["id"], **value}
+
+        return update(transaction)
+
+    def deactivate_plan(self, plan_id):
+        ref = self._ref("plans", str(plan_id or "").strip().lower())
+        transaction = self.db.transaction()
+
+        @firestore.transactional
+        def deactivate(transaction):
+            prior = _data(ref.get(transaction=transaction))
+            if not prior:
+                raise BillingError("plan_not_found", "The selected billing plan was not found", 404)
+            transaction.set(ref, {
+                "active": False,
+                "revision": int(prior.get("revision", 0)) + 1,
+                "updatedAt": utc_now(),
+            }, merge=True)
+            prior["active"] = False
+            prior["revision"] = int(prior.get("revision", 0)) + 1
+            return prior
+
+        return deactivate(transaction)
+
+    def reorder_plans(self, plan_ids):
+        transaction = self.db.transaction()
+
+        @firestore.transactional
+        def reorder(transaction):
+            snapshots = list(self.db.collection(COLLECTIONS["plans"]).stream(transaction=transaction))
+            values = [_data(snapshot) for snapshot in snapshots]
+            all_ids = {value["id"] for value in values if value}
+            if len(plan_ids) != len(set(plan_ids)) or set(plan_ids) != all_ids:
+                raise BillingError("invalid_plan_order", "planIds must contain every plan exactly once")
+            by_id = {value["id"]: value for value in values if value}
+            now = utc_now()
+            for index, plan_id in enumerate(plan_ids):
+                transaction.set(self._ref("plans", plan_id), {
+                    "sortOrder": index,
+                    "revision": int(by_id[plan_id].get("revision", 0)) + 1,
+                    "updatedAt": now,
+                }, merge=True)
+            return True
+
+        reorder(transaction)
+        return self.list_plans(include_inactive=True)
 
     def put_coupon(self, coupon, create_only=False):
         ref = self._ref("coupons", coupon["code"])
@@ -122,6 +231,7 @@ class FirestoreBillingStore:
         coupon_ref = self._ref("coupons", coupon_code) if coupon_code else None
         usage_ref = self._coupon_user_ref(uid, coupon_code) if coupon_code else None
         subscription_ref = self._ref("subscriptions", uid)
+        plan_ref = self._ref("plans", plan.id) if self.persisted_plans_required else None
         transaction = self.db.transaction()
 
         @firestore.transactional
@@ -132,12 +242,19 @@ class FirestoreBillingStore:
                     raise BillingError("idempotency_conflict", "Idempotency key was already used for different checkout details", 409)
                 return existing, False
 
+            current_plan = plan
+            if plan_ref is not None:
+                stored_plan = _data(plan_ref.get(transaction=transaction))
+                if not stored_plan or stored_plan.get("active") is not True:
+                    raise BillingError("plan_not_found", "The selected billing plan is no longer available", 404)
+                current_plan = plan_from_record(stored_plan)
+
             subscription = _data(subscription_ref.get(transaction=transaction))
             if (
                 subscription
                 and subscription.get("expiresAt")
                 and subscription["expiresAt"] > now
-                and subscription.get("planId") != plan.id
+                and subscription.get("planId") != current_plan.id
             ):
                 raise BillingError(
                     "active_subscription_plan_conflict",
@@ -162,7 +279,7 @@ class FirestoreBillingStore:
                     )
                 has_prior = bool(subscription and int(subscription.get("paymentCount", 0)) > 0)
                 discount = evaluate_coupon(
-                    coupon, plan, now, int(usage.get("usedCount", 0)),
+                    coupon, current_plan, now, int(usage.get("usedCount", 0)),
                     int(usage.get("reservedCount", 0)), has_prior,
                 )
                 coupon_snapshot = public_coupon(coupon)
@@ -178,19 +295,19 @@ class FirestoreBillingStore:
                 transaction.set(coupon_ref, coupon_update)
                 transaction.set(usage_ref, usage)
 
-            final_amount = plan.amount_paise - discount
+            final_amount = current_plan.amount_paise - discount
             if final_amount == 0 and not allow_zero:
                 raise BillingError("zero_amount_not_allowed", "Coupons cannot reduce a Razorpay order to zero", 409)
             order = {
                 "userId": uid,
                 "userEmail": user_email,
                 "idempotencyKeyHash": hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest(),
-                "planId": plan.id,
-                "planSnapshot": plan.snapshot(),
+                "planId": current_plan.id,
+                "planSnapshot": current_plan.snapshot(),
                 "couponCode": coupon_code,
                 "couponSnapshot": coupon_snapshot,
                 "amountPaise": final_amount,
-                "originalAmountPaise": plan.amount_paise,
+                "originalAmountPaise": current_plan.amount_paise,
                 "discountPaise": discount,
                 "currency": "INR",
                 "status": "reserved" if final_amount > 0 else "zero_amount",
@@ -438,6 +555,7 @@ class FirestoreBillingStore:
             }
             subscription = {
                 "userId": current["userId"], "status": "active", "planId": current["planId"],
+                "entitlementTier": current["planSnapshot"].get("entitlementTier", current["planId"]),
                 "startsAt": starts, "expiresAt": expires, "updatedAt": now,
                 "lastPaymentId": provider_payment["id"],
                 "paymentCount": int((prior_subscription or {}).get("paymentCount", 0)) + 1,

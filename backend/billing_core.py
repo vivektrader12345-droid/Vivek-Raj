@@ -76,6 +76,10 @@ def inr_from_paise(value):
     return float((Decimal(int(value or 0)) / 100).quantize(Decimal("0.01")))
 
 
+PLAN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,31}$")
+ENTITLEMENT_TIERS = ("basic", "pro", "elite")
+
+
 @dataclass(frozen=True)
 class Plan:
     id: str
@@ -83,16 +87,29 @@ class Plan:
     amount_paise: int
     duration_days: int
     features: tuple
+    active: bool = True
+    sort_order: int = 0
+    entitlement_tier: str = "basic"
+    revision: int = 0
 
-    def public(self):
+    def record(self):
         return {
             "id": self.id,
             "name": self.name,
             "amountPaise": self.amount_paise,
-            "amountInr": inr_from_paise(self.amount_paise),
-            "currency": "INR",
             "durationDays": self.duration_days,
             "features": list(self.features),
+            "active": self.active,
+            "sortOrder": self.sort_order,
+            "entitlementTier": self.entitlement_tier,
+            "revision": self.revision,
+        }
+
+    def public(self):
+        return {
+            **self.record(),
+            "amountInr": inr_from_paise(self.amount_paise),
+            "currency": "INR",
         }
 
     def snapshot(self):
@@ -100,15 +117,83 @@ class Plan:
 
 
 DEFAULT_PLANS = (
-    Plan("basic", "Basic", 49900, 30, ("Trading dashboard", "Trade journal", "Email support")),
-    Plan("pro", "Pro", 99900, 90, ("Everything in Basic", "Advanced analytics", "Algo and webhook tools", "Priority support")),
-    Plan("elite", "Elite", 249900, 365, ("Everything in Pro", "Pro trading terminal", "Full-year access", "Premium support")),
+    Plan("basic", "Basic", 49900, 30, ("Trading dashboard", "Trade journal", "Email support"), True, 0, "basic"),
+    Plan("pro", "Pro", 99900, 90, ("Everything in Basic", "Advanced analytics", "Algo and webhook tools", "Priority support"), True, 1, "pro"),
+    Plan("elite", "Elite", 249900, 365, ("Everything in Pro", "Pro trading terminal", "Full-year access", "Premium support"), True, 2, "elite"),
 )
+
+
+def normalize_plan_input(data, existing=None):
+    if not isinstance(data, dict):
+        raise BillingError("invalid_request", "Plan must be a JSON object")
+    source = dict(existing or {})
+    source.update(data)
+    raw_id = source.get("id")
+    if not isinstance(raw_id, str):
+        raise BillingError("invalid_plan_id", "Plan ID must be a string")
+    plan_id = raw_id.strip()
+    if not PLAN_ID_RE.fullmatch(plan_id):
+        raise BillingError("invalid_plan_id", "Plan ID must be 2-32 lowercase letters, numbers, underscores, or hyphens")
+    raw_name = source.get("name")
+    if not isinstance(raw_name, str):
+        raise BillingError("invalid_plan_name", "Plan name must be a string")
+    name = raw_name.strip()
+    if not name or len(name) > 80:
+        raise BillingError("invalid_plan_name", "Plan name must be between 1 and 80 characters")
+    amount = source.get("amountPaise")
+    duration = source.get("durationDays")
+    sort_order = source.get("sortOrder", 0)
+    revision = source.get("revision", 0)
+    if type(amount) is not int or amount <= 0:
+        raise BillingError("invalid_plan_amount", "Plan amountPaise must be a positive integer")
+    if type(duration) is not int or duration <= 0 or duration > 3650:
+        raise BillingError("invalid_plan_duration", "Plan durationDays must be an integer from 1 to 3650")
+    if type(sort_order) is not int or sort_order < 0 or sort_order > 10000:
+        raise BillingError("invalid_plan_sort_order", "Plan sortOrder must be an integer from 0 to 10000")
+    if type(revision) is not int or revision < 0:
+        raise BillingError("invalid_plan_revision", "Plan revision must be a non-negative integer")
+    features = source.get("features")
+    if not isinstance(features, list) or not features or len(features) > 20:
+        raise BillingError("invalid_plan_features", "Plan features must contain between 1 and 20 items")
+    normalized_features = []
+    for value in features:
+        if not isinstance(value, str) or not value.strip() or len(value.strip()) > 160:
+            raise BillingError("invalid_plan_features", "Each plan feature must be a string between 1 and 160 characters")
+        normalized_features.append(value.strip())
+    active = source.get("active", True)
+    if type(active) is not bool:
+        raise BillingError("invalid_plan_status", "Plan active must be a boolean")
+    raw_tier = source.get("entitlementTier", plan_id if plan_id in ENTITLEMENT_TIERS else "basic")
+    if not isinstance(raw_tier, str):
+        raise BillingError("invalid_entitlement_tier", "Plan entitlementTier must be a string")
+    entitlement_tier = raw_tier.strip().lower()
+    if entitlement_tier not in ENTITLEMENT_TIERS:
+        raise BillingError("invalid_entitlement_tier", "Plan entitlementTier must be basic, pro, or elite")
+    return {
+        "id": plan_id,
+        "name": name,
+        "amountPaise": amount,
+        "durationDays": duration,
+        "features": normalized_features,
+        "active": active,
+        "sortOrder": sort_order,
+        "entitlementTier": entitlement_tier,
+        "revision": revision,
+    }
+
+
+def plan_from_record(value):
+    record = normalize_plan_input(value)
+    return Plan(
+        record["id"], record["name"], record["amountPaise"], record["durationDays"],
+        tuple(record["features"]), record["active"], record["sortOrder"], record["entitlementTier"],
+        record["revision"],
+    )
 
 
 class PlanCatalog:
     def __init__(self, plans=None):
-        values = tuple(plans or DEFAULT_PLANS)
+        values = tuple(DEFAULT_PLANS if plans is None else plans)
         self._plans = {plan.id: plan for plan in values}
         if len(self._plans) != len(values):
             raise ValueError("Plan IDs must be unique")
@@ -122,44 +207,62 @@ class PlanCatalog:
         except Exception as error:
             raise ValueError("BILLING_PLANS_JSON must be valid JSON") from error
         if isinstance(data, dict):
-            for value in data.values():
-                if not isinstance(value, dict):
-                    raise ValueError("Each billing plan must be an object")
+            if any(not isinstance(value, dict) for value in data.values()):
+                raise ValueError("Each billing plan must be an object")
             items = [{"id": key, **value} for key, value in data.items()]
         elif isinstance(data, list):
             items = data
         else:
             raise ValueError("BILLING_PLANS_JSON must be an array or object")
         plans = []
-        for item in items:
-            if not isinstance(item, dict):
-                raise ValueError("Each billing plan must be an object")
-            plan_id = str(item.get("id") or "").strip().lower()
-            name = str(item.get("name") or "").strip()
-            features = item.get("features")
-            amount_value = item.get("amountPaise")
-            days_value = item.get("durationDays")
-            if type(amount_value) is not int or type(days_value) is not int:
-                raise ValueError("Plan amountPaise and durationDays must be integers")
-            amount = amount_value
-            days = days_value
-            if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,31}", plan_id) or not name or amount <= 0 or days <= 0:
-                raise ValueError("Plan id, name, amountPaise, or durationDays is invalid")
-            if not isinstance(features, list) or not features or any(not isinstance(value, str) or not value.strip() for value in features):
-                raise ValueError("Plan features must be a non-empty string array")
-            plans.append(Plan(plan_id, name[:80], amount, days, tuple(value.strip()[:160] for value in features[:20])))
+        try:
+            for index, item in enumerate(items):
+                if not isinstance(item, dict):
+                    raise BillingError("invalid_plan", "Each billing plan must be an object")
+                raw_id = item.get("id")
+                if not isinstance(raw_id, str):
+                    raise BillingError("invalid_plan_id", "Plan ID must be a string")
+                plan_id = raw_id.strip()
+                record = normalize_plan_input({
+                    **item,
+                    "active": item.get("active", True),
+                    "sortOrder": item.get("sortOrder", index),
+                    "entitlementTier": item.get("entitlementTier", plan_id if plan_id in ENTITLEMENT_TIERS else "basic"),
+                })
+                plans.append(plan_from_record(record))
+        except BillingError as error:
+            raise ValueError(error.message) from error
         if not plans:
             raise ValueError("At least one billing plan is required")
         return cls(plans)
 
-    def all(self):
-        return [plan.public() for plan in self._plans.values()]
+    def all(self, include_inactive=False):
+        return [
+            plan.public() for plan in sorted(self._plans.values(), key=lambda value: (value.sort_order, value.id))
+            if include_inactive or plan.active
+        ]
 
-    def get(self, plan_id):
+    def get(self, plan_id, include_inactive=False):
         plan = self._plans.get(str(plan_id or "").strip().lower())
-        if not plan:
+        if not plan or (not include_inactive and not plan.active):
             raise BillingError("plan_not_found", "The selected billing plan was not found", 404)
         return plan
+
+
+class StoredPlanCatalog:
+    """Request-time plan catalog backed by the billing store."""
+
+    def __init__(self, store):
+        self.store = store
+
+    def all(self, include_inactive=False):
+        return [plan_from_record(value).public() for value in self.store.list_plans(include_inactive)]
+
+    def get(self, plan_id, include_inactive=False):
+        value = self.store.get_plan(str(plan_id or "").strip().lower(), include_inactive)
+        if not value:
+            raise BillingError("plan_not_found", "The selected billing plan was not found", 404)
+        return plan_from_record(value)
 
 
 def normalize_code(value):
@@ -354,6 +457,76 @@ class MemoryBillingStore:
         self.subscriptions = {}
         self.redemptions = {}
         self.events = {}
+        self.plans = {}
+        self.persisted_plans_required = False
+
+    def require_persisted_plans(self):
+        self.persisted_plans_required = True
+
+    def seed_plans_if_empty(self, plans):
+        with self.lock:
+            if self.plans:
+                return False
+            now = utc_now()
+            for value in plans:
+                record = normalize_plan_input(value)
+                record.update({"revision": max(1, record.get("revision", 0)), "createdAt": now, "updatedAt": now})
+                self.plans[record["id"]] = record
+            return True
+
+    def list_plans(self, include_inactive=False):
+        with self.lock:
+            values = (
+                value for value in self.plans.values()
+                if include_inactive or value.get("active") is True
+            )
+            return [deepcopy(value) for value in sorted(values, key=lambda item: (item.get("sortOrder", 0), item["id"]))]
+
+    def get_plan(self, plan_id, include_inactive=False):
+        with self.lock:
+            value = self.plans.get(str(plan_id or "").strip().lower())
+            if not value or (not include_inactive and value.get("active") is not True):
+                return None
+            return deepcopy(value)
+
+    def put_plan(self, plan, create_only=False, expected_revision=None):
+        with self.lock:
+            record = normalize_plan_input(plan)
+            prior = self.plans.get(record["id"])
+            if create_only and prior:
+                raise BillingError("plan_exists", "A plan with this ID already exists", 409)
+            if expected_revision is not None and (not prior or int(prior.get("revision", 0)) != expected_revision):
+                raise BillingError("plan_conflict", "This plan changed while you were editing it. Reload and try again", 409)
+            now = utc_now()
+            record["revision"] = int((prior or {}).get("revision", 0)) + 1
+            record["createdAt"] = (prior or {}).get("createdAt", now)
+            record["updatedAt"] = now
+            self.plans[record["id"]] = record
+            return deepcopy(record)
+
+    def deactivate_plan(self, plan_id):
+        with self.lock:
+            normalized = str(plan_id or "").strip().lower()
+            prior = self.plans.get(normalized)
+            if not prior:
+                raise BillingError("plan_not_found", "The selected billing plan was not found", 404)
+            record = deepcopy(prior)
+            record["active"] = False
+            record["revision"] = int(prior.get("revision", 0)) + 1
+            record["updatedAt"] = utc_now()
+            self.plans[normalized] = record
+            return deepcopy(record)
+
+    def reorder_plans(self, plan_ids):
+        with self.lock:
+            if len(plan_ids) != len(set(plan_ids)) or set(plan_ids) != set(self.plans):
+                raise BillingError("invalid_plan_order", "planIds must contain every plan exactly once")
+            now = utc_now()
+            for index, plan_id in enumerate(plan_ids):
+                self.plans[plan_id]["sortOrder"] = index
+                self.plans[plan_id]["revision"] = int(self.plans[plan_id].get("revision", 0)) + 1
+                self.plans[plan_id]["updatedAt"] = now
+            return self.list_plans(include_inactive=True)
 
     def put_coupon(self, coupon, create_only=False):
         with self.lock:
@@ -397,6 +570,11 @@ class MemoryBillingStore:
                 if existing["planId"] != plan.id or existing.get("couponCode") != coupon_code:
                     raise BillingError("idempotency_conflict", "Idempotency key was already used for different checkout details", 409)
                 return deepcopy(existing), False
+            if self.persisted_plans_required:
+                stored_plan = self.plans.get(plan.id)
+                if not stored_plan or stored_plan.get("active") is not True:
+                    raise BillingError("plan_not_found", "The selected billing plan is no longer available", 404)
+                plan = plan_from_record(stored_plan)
             subscription = self.subscriptions.get(uid)
             if (
                 subscription
@@ -631,6 +809,7 @@ class MemoryBillingStore:
             }
             subscription = {
                 "userId": current["userId"], "status": "active", "planId": current["planId"],
+                "entitlementTier": current["planSnapshot"].get("entitlementTier", current["planId"]),
                 "startsAt": starts, "expiresAt": expires, "updatedAt": now,
                 "lastPaymentId": provider_payment["id"], "paymentCount": int((prior or {}).get("paymentCount", 0)) + 1,
             }
@@ -714,7 +893,7 @@ class BillingService:
     def __init__(self, store, provider, catalog=None, checkout_ttl_minutes=20, allow_zero=False, clock=utc_now):
         self.store = store
         self.provider = provider
-        self.catalog = catalog or PlanCatalog()
+        self.catalog = catalog if catalog is not None else PlanCatalog()
         self.ttl = max(1, int(checkout_ttl_minutes))
         self.allow_zero = bool(allow_zero)
         self.clock = clock

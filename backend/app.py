@@ -963,17 +963,29 @@ def _release_identifier():
     return os.environ.get('RENDER_GIT_COMMIT', '').strip()[:12] or 'unknown'
 
 
+def _billing_readiness():
+    probe = getattr(billing_blueprint, 'billing_probe', None)
+    try:
+        components = probe() if callable(probe) else dict(getattr(billing_blueprint, 'billing_readiness', {}))
+    except Exception:
+        components = dict(getattr(billing_blueprint, 'billing_readiness', {}))
+        components['catalog'] = False
+    components['ready'] = all(
+        components.get(key) for key in ('catalog', 'storage', 'provider', 'webhook')
+    )
+    return components
+
+
 @app.route('/health', methods=['GET'])
 def health():
-    billing_components = dict(getattr(billing_blueprint, 'billing_readiness', {}))
-    billing_components['ready'] = all(billing_components.values()) if billing_components else False
+    billing_components = _billing_readiness()
     otp_components = _otp_readiness()
     configured = _otp_configuration_ready(otp_components)
     operational = configured and otp_components['firestoreOperational']
     otp_components['ready'] = configured
     otp_components['operational'] = operational
     return jsonify({
-        'status': 'healthy' if operational else 'degraded',
+        'status': 'healthy' if operational and billing_components['ready'] else 'degraded',
         'release': _release_identifier(),
         'exchange': exchange_registry.connected_count() > 0,
         'firebase': firebase_app is not None and db is not None,
@@ -992,12 +1004,15 @@ def ready():
     operational = configured and otp_components['firestoreOperational']
     otp_components['ready'] = configured
     otp_components['operational'] = operational
+    billing_components = _billing_readiness()
+    ready_status = operational and billing_components['ready']
     return jsonify({
-        'status': 'ready' if operational else 'degraded',
+        'status': 'ready' if ready_status else 'degraded',
         'release': _release_identifier(),
         'otp': otp_components,
+        'billing': billing_components,
         'timestamp': datetime.now().isoformat(),
-    }), 200 if configured else 503
+    }), 200 if ready_status else 503
 
 
 @app.route('/alerts', methods=['GET'])

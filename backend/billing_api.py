@@ -16,11 +16,14 @@ from billing_core import (
     BillingError,
     BillingService,
     PlanCatalog,
+    StoredPlanCatalog,
     inr_from_paise,
     iso,
     normalize_code,
     normalize_coupon_input,
+    normalize_plan_input,
     payment_public,
+    plan_from_record,
     public_coupon,
     subscription_public,
     utc_now,
@@ -33,6 +36,9 @@ USER_ORDER_FIELDS = {"planId", "couponCode", "idempotencyKey"}
 VERIFY_FIELDS = {"razorpay_order_id", "razorpay_payment_id", "razorpay_signature"}
 FAILURE_FIELDS = {"razorpay_order_id", "razorpay_payment_id"}
 COUPON_VALIDATE_FIELDS = {"planId", "couponCode"}
+PLAN_CREATE_FIELDS = {"id", "name", "amountPaise", "durationDays", "features", "active", "sortOrder", "entitlementTier"}
+PLAN_UPDATE_FIELDS = (PLAN_CREATE_FIELDS - {"id"}) | {"revision"}
+PLAN_ORDER_FIELDS = {"planIds"}
 
 
 def _request_id():
@@ -76,12 +82,13 @@ def _limit_arg(default=100, maximum=200):
 def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, catalog=None):
     """Create an isolated billing blueprint with injectable persistence/provider."""
     bp = Blueprint("razorpay_billing", __name__)
+    explicit_catalog = catalog is not None
     try:
-        catalog = catalog or PlanCatalog.from_json(os.environ.get("BILLING_PLANS_JSON", ""))
-        catalog_ready = True
+        fallback_catalog = catalog if explicit_catalog else PlanCatalog.from_json(os.environ.get("BILLING_PLANS_JSON", ""))
+        catalog_config_valid = True
     except ValueError:
-        catalog = PlanCatalog()
-        catalog_ready = False
+        fallback_catalog = PlanCatalog()
+        catalog_config_valid = False
 
     if provider is None:
         try:
@@ -94,6 +101,40 @@ def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, c
             provider = RazorpayAdapter(None, None, None)
     if store is None and db is not None:
         store = FirestoreBillingStore(db)
+
+    catalog_ready = catalog_config_valid
+    dynamic_catalog = bool(
+        store is not None
+        and not explicit_catalog
+        and hasattr(store, "seed_plans_if_empty")
+        and hasattr(store, "list_plans")
+    )
+    if dynamic_catalog:
+        catalog_ready = False
+    catalog = StoredPlanCatalog(store) if dynamic_catalog else fallback_catalog
+
+    def ensure_catalog_ready():
+        nonlocal catalog_ready
+        if not dynamic_catalog:
+            catalog_ready = catalog_config_valid
+            return catalog_ready
+        try:
+            if not catalog_ready:
+                if catalog_config_valid:
+                    store.seed_plans_if_empty(fallback_catalog.all(include_inactive=True))
+                elif not store.list_plans(include_inactive=True):
+                    raise ValueError("A valid initial plan catalog is required")
+                if hasattr(store, "require_persisted_plans"):
+                    store.require_persisted_plans()
+            catalog.all(include_inactive=True)
+            catalog_ready = True
+        except Exception:
+            catalog_ready = False
+        if hasattr(bp, "billing_readiness"):
+            bp.billing_readiness["catalog"] = catalog_ready
+        return catalog_ready
+
+    ensure_catalog_ready()
     ttl = os.environ.get("BILLING_CHECKOUT_TTL_MINUTES", "20")
     try:
         ttl = max(1, min(int(ttl), 1440))
@@ -112,6 +153,18 @@ def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, c
         "provider": bool(provider.readiness.configured),
         "webhook": bool(provider.readiness.webhook_configured),
     }
+
+    def billing_probe():
+        components = {
+            "catalog": ensure_catalog_ready(),
+            "storage": store is not None,
+            "provider": bool(provider.readiness.configured),
+            "webhook": bool(provider.readiness.webhook_configured),
+        }
+        bp.billing_readiness = components
+        return dict(components)
+
+    bp.billing_probe = billing_probe
 
     @bp.before_request
     def assign_request_id():
@@ -186,7 +239,7 @@ def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, c
     @bp.get("/api/v1/billing/plans")
     @require_auth()
     def plans():
-        if not catalog_ready:
+        if not ensure_catalog_ready():
             raise BillingError("billing_catalog_invalid", "Billing plan configuration is invalid", 503)
         return jsonify({"plans": catalog.all(), "currency": "INR", "requestId": _request_id()})
 
@@ -326,6 +379,76 @@ def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, c
             billing.store.finish_event(event_id, "failed", utc_now(), "processing_failed")
             raise
 
+    @bp.get("/api/v1/admin/billing/plans")
+    @require_auth(admin=True)
+    def admin_list_plans():
+        billing = require_storage()
+        if not hasattr(billing.store, "list_plans"):
+            raise BillingError("plan_management_unavailable", "Plan management is unavailable", 503)
+        values = [plan_from_record(value).public() for value in billing.store.list_plans(include_inactive=True)]
+        return jsonify({"plans": values, "requestId": _request_id()})
+
+    @bp.post("/api/v1/admin/billing/plans")
+    @require_auth(admin=True)
+    def admin_create_plan():
+        billing = require_storage()
+        if not hasattr(billing.store, "put_plan"):
+            raise BillingError("plan_management_unavailable", "Plan management is unavailable", 503)
+        data = _body()
+        _allow_fields(data, PLAN_CREATE_FIELDS)
+        default_order = len(billing.store.list_plans(include_inactive=True))
+        plan = normalize_plan_input({**data, "sortOrder": data.get("sortOrder", default_order)})
+        value = billing.store.put_plan(plan, create_only=True)
+        return jsonify({"plan": plan_from_record(value).public(), "requestId": _request_id()}), 201
+
+    @bp.patch("/api/v1/admin/billing/plans/<plan_id>")
+    @require_auth(admin=True)
+    def admin_update_plan(plan_id):
+        billing = require_storage()
+        if not hasattr(billing.store, "get_plan") or not hasattr(billing.store, "put_plan"):
+            raise BillingError("plan_management_unavailable", "Plan management is unavailable", 503)
+        normalized_id = str(plan_id or "").strip().lower()
+        existing = billing.store.get_plan(normalized_id, include_inactive=True)
+        if not existing:
+            raise BillingError("plan_not_found", "The selected billing plan was not found", 404)
+        data = _body()
+        _allow_fields(data, PLAN_UPDATE_FIELDS)
+        expected_revision = data.get("revision")
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise BillingError("invalid_plan_revision", "The current positive plan revision is required")
+        changes = dict(data)
+        changes.pop("revision", None)
+        plan = normalize_plan_input({**changes, "id": normalized_id}, existing)
+        value = billing.store.put_plan(plan, expected_revision=expected_revision)
+        return jsonify({"plan": plan_from_record(value).public(), "requestId": _request_id()})
+
+    @bp.delete("/api/v1/admin/billing/plans/<plan_id>")
+    @require_auth(admin=True)
+    def admin_deactivate_plan(plan_id):
+        billing = require_storage()
+        if not hasattr(billing.store, "deactivate_plan"):
+            raise BillingError("plan_management_unavailable", "Plan management is unavailable", 503)
+        value = billing.store.deactivate_plan(str(plan_id or "").strip().lower())
+        return jsonify({"plan": plan_from_record(value).public(), "requestId": _request_id()})
+
+    @bp.put("/api/v1/admin/billing/plans/order")
+    @require_auth(admin=True)
+    def admin_reorder_plans():
+        billing = require_storage()
+        if not hasattr(billing.store, "reorder_plans"):
+            raise BillingError("plan_management_unavailable", "Plan management is unavailable", 503)
+        data = _body()
+        _allow_fields(data, PLAN_ORDER_FIELDS)
+        raw_ids = data.get("planIds")
+        if not isinstance(raw_ids, list) or not raw_ids or any(not isinstance(value, str) or not value.strip() for value in raw_ids):
+            raise BillingError("invalid_plan_order", "planIds must be a non-empty string array")
+        plan_ids = [value.strip().lower() for value in raw_ids]
+        values = billing.store.reorder_plans(plan_ids)
+        return jsonify({
+            "plans": [plan_from_record(value).public() for value in values],
+            "requestId": _request_id(),
+        })
+
     @bp.get("/api/v1/admin/billing/coupons")
     @require_auth(admin=True)
     def admin_list_coupons():
@@ -339,7 +462,7 @@ def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, c
         data = _body()
         coupon = normalize_coupon_input(data)
         for plan_id in coupon["planIds"]:
-            catalog.get(plan_id)
+            catalog.get(plan_id, include_inactive=True)
         value = billing.store.put_coupon(coupon, create_only=True)
         return jsonify({"coupon": public_coupon(value), "requestId": _request_id()}), 201
 
@@ -356,7 +479,7 @@ def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, c
             raise BillingError("coupon_code_immutable", "Coupon code cannot be changed", 409)
         coupon = normalize_coupon_input({**data, "code": normalized}, existing)
         for plan_id in coupon["planIds"]:
-            catalog.get(plan_id)
+            catalog.get(plan_id, include_inactive=True)
         value = billing.store.put_coupon(coupon)
         return jsonify({"coupon": public_coupon(value), "requestId": _request_id()})
 

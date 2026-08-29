@@ -2,19 +2,21 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTrades } from '../context/TradeContext'
 import { useAuth } from '../context/AuthContext'
+import { useSubscription } from '../context/SubscriptionContext'
 import { useCurrency } from '../context/CurrencyContext'
 import { requestNotificationPermission } from '../utils/notifications'
 import { exportMonthlyReport } from '../utils/exportPDF'
 import CSVImport from '../components/CSVImport'
 import {
   TrendingUp, TrendingDown, Target, DollarSign, Award, Activity,
-  ArrowUpRight, ArrowDownRight, Flame, PlusCircle, History
+  ArrowUpRight, ArrowDownRight, Flame, PlusCircle, History, Crown
 } from 'lucide-react'
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts'
 
 function Dashboard() {
   const { trades, getStats, tradeError } = useTrades()
   const { user } = useAuth()
+  const { subscription, active: subscriptionActive } = useSubscription()
   const [showImport, setShowImport] = useState(false)
   const { formatAmount, symbol } = useCurrency()
   const stats = getStats()
@@ -95,6 +97,17 @@ function Dashboard() {
             New Trade
           </Link>
         </div>
+      </div>
+
+      <div className={`flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${subscriptionActive ? 'border-emerald-500/25 bg-emerald-500/10' : 'border-amber-500/25 bg-amber-500/10'}`}>
+        <div className="flex items-center gap-3">
+          <Crown className={subscriptionActive ? 'text-emerald-400' : 'text-amber-400'} />
+          <div>
+            <p className="font-semibold capitalize text-white">{subscriptionActive ? `${subscription.planId} subscription active` : 'No active subscription'}</p>
+            <p className="text-sm text-gray-400">{subscriptionActive ? `Premium access until ${new Date(subscription.expiresAt).toLocaleDateString('en-IN')}` : 'Upgrade to unlock analytics, automation, webhooks and Pro Trading.'}</p>
+          </div>
+        </div>
+        <Link to="/subscription" className="btn-secondary w-fit text-sm">{subscriptionActive ? 'Manage Plan' : 'View Plans'}</Link>
       </div>
 
       {tradeError && (

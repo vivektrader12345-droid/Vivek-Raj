@@ -925,7 +925,8 @@ def create_webhook_blueprint(db, base_url=None, firebase_app=None, enforce_entit
                         expires_at = subscription.get("expiresAt")
                         if expires_at and expires_at.tzinfo is None:
                             expires_at = expires_at.replace(tzinfo=timezone.utc)
-                        plan_rank = {"basic": 1, "pro": 2, "elite": 3}.get(subscription.get("planId"), 0)
+                        entitlement_tier = subscription.get("entitlementTier") or subscription.get("planId")
+                        plan_rank = {"basic": 1, "pro": 2, "elite": 3}.get(entitlement_tier, 0)
                         entitled = (
                             subscription.get("status") == "active"
                             and expires_at is not None

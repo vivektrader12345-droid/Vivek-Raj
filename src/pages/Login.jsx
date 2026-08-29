@@ -7,6 +7,7 @@ import { Eye, EyeOff } from 'lucide-react'
 import OTPInput from '../components/OTPInput'
 import PhoneOTPVerify from '../components/PhoneOTPVerify'
 import { sendOTP, verifyOTP } from '../utils/otpService'
+import { getGoogleSignInErrorMessage } from '../services/googleSignInErrorPresentation'
 
 function Login() {
   const [email, setEmail] = useState('')
@@ -67,11 +68,10 @@ function Login() {
     setGoogleLoading(true)
     try {
       await signInWithGoogle()
-      navigate('/')
+      navigate('/subscription')
     } catch (err) {
-      if (err.code !== 'auth/popup-closed-by-user') {
-        setError(err.message || 'Google sign-in failed')
-      }
+      const message = getGoogleSignInErrorMessage(err)
+      if (message) setError(message)
     } finally {
       setGoogleLoading(false)
     }
@@ -109,9 +109,9 @@ function Login() {
           // Phone verified — complete login
           try {
             await completeLogin()
-            navigate('/')
+            navigate('/subscription')
           } catch {
-            window.location.href = '/'
+            window.location.href = '/subscription'
           }
         }}
         onBack={() => setShowPhoneVerify(false)}
@@ -150,7 +150,7 @@ function Login() {
                   // Email OTP verified — complete login
                   try {
                     await completeLogin()
-                    navigate('/')
+                    navigate('/subscription')
                   } catch (completionError) {
                     setError(completionError.message || 'Unable to complete login. Please try again.')
                     setOtpVerifying(false)
