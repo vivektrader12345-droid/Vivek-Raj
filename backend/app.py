@@ -250,7 +250,7 @@ def require_firebase_user(handler):
     return wrapped
 
 # Secure OTP endpoints keep codes and verification state server-side.
-from otp_auth import create_otp_blueprint
+from otp_auth import create_otp_blueprint, emailjs_configuration_ready
 
 if 'otp_auth' not in app.blueprints:
     app.register_blueprint(create_otp_blueprint(db, firebase_app=firebase_app))
@@ -955,10 +955,7 @@ def _otp_readiness():
         'firestoreOperational': firestore_probe['operational'],
         'firestoreCode': firestore_probe['code'],
         'hmacSecret': len(os.environ.get('OTP_HMAC_SECRET', '').strip()) >= 32,
-        'emailProvider': all(
-            os.environ.get(key, '').strip()
-            for key in ('EMAILJS_SERVICE_ID', 'EMAILJS_TEMPLATE_ID', 'EMAILJS_PUBLIC_KEY')
-        ),
+        'emailProvider': emailjs_configuration_ready(),
     }
 
 

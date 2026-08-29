@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
+import re
 import secrets
 import time
+from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 import requests
@@ -18,6 +20,31 @@ OTP_EXPIRY_SECONDS = 5 * 60
 OTP_RESEND_SECONDS = 60
 OTP_MAX_ATTEMPTS = 5
 EMAILJS_ENDPOINT = "https://api.emailjs.com/api/v1.0/email/send"
+EMAILJS_TIMEOUT = (5, 10)
+MAX_SAFE_RETRY_AFTER = 60 * 60
+_EMAILJS_VALUE = re.compile(r"^[A-Za-z0-9_-]{3,128}$")
+_EMAILJS_TEMPLATE_SIGNALS = frozenset({
+    "service not found",
+    "template not found",
+    "service is not active",
+    "template is not active",
+})
+_EMAILJS_RECIPIENT_SIGNALS = frozenset({
+    "recipient is required",
+    "recipient address is invalid",
+    "recipient rejected",
+})
+
+
+@dataclass(frozen=True)
+class EmailDeliveryFailure(Exception):
+    """Secret-free description of an EmailJS delivery failure."""
+
+    category: str
+    diagnostic_code: str
+    retryable: bool
+    retry_after: Optional[int]
+    exception_class: str
 
 
 def _error(message: str, status: int, diagnostic_code: Optional[str] = None):
@@ -28,8 +55,21 @@ def _error(message: str, status: int, diagnostic_code: Optional[str] = None):
 
 
 def _log_safe_failure(event: str, error: Exception) -> None:
-    """Log failure type without leaking credentials, OTPs, or provider responses."""
+    """Log an allowlisted event and exception class, never exception text."""
     print(f"[WARN] {event} ({type(error).__name__})", flush=True)
+
+
+def _log_email_failure(failure: EmailDeliveryFailure) -> None:
+    print(
+        "[WARN] %s category=%s exception=%s retryable=%s"
+        % (
+            failure.diagnostic_code,
+            failure.category,
+            failure.exception_class,
+            str(failure.retryable).lower(),
+        ),
+        flush=True,
+    )
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -71,29 +111,209 @@ def _otp_digest(secret: str, uid: str, nonce: str, code: str) -> str:
     return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
 
 
-def _send_emailjs_otp(email: str, code: str) -> None:
-    service_id = os.environ.get("EMAILJS_SERVICE_ID", "").strip()
-    template_id = os.environ.get("EMAILJS_TEMPLATE_ID", "").strip()
-    public_key = os.environ.get("EMAILJS_PUBLIC_KEY", "").strip()
-    if not service_id or not template_id or not public_key:
-        raise RuntimeError("OTP email service is not configured")
+def _safe_exception_class(error: Optional[Exception]) -> str:
+    if error is None:
+        return "HttpResponse"
+    allowed = {
+        "Timeout",
+        "ConnectTimeout",
+        "ReadTimeout",
+        "ConnectionError",
+        "RequestException",
+    }
+    name = type(error).__name__
+    return name if name in allowed else "Exception"
 
-    response = requests.post(
-        EMAILJS_ENDPOINT,
-        json={
-            "service_id": service_id,
-            "template_id": template_id,
-            "user_id": public_key,
-            "template_params": {
-                "email": email,
-                "otp_code": code,
-                "app_name": "Vivek Marco Trader",
-                "expiry_minutes": str(OTP_EXPIRY_SECONDS // 60),
-            },
-        },
-        timeout=10,
+
+def _delivery_failure(
+    category: str,
+    *,
+    retryable: bool = False,
+    retry_after: Optional[int] = None,
+    error: Optional[Exception] = None,
+) -> EmailDeliveryFailure:
+    return EmailDeliveryFailure(
+        category=category,
+        diagnostic_code=f"otp_email_{category}",
+        retryable=retryable,
+        retry_after=retry_after,
+        exception_class=_safe_exception_class(error),
     )
-    response.raise_for_status()
+
+
+def _emailjs_configuration() -> Tuple[str, str, str]:
+    values = tuple(
+        os.environ.get(key, "").strip()
+        for key in ("EMAILJS_SERVICE_ID", "EMAILJS_TEMPLATE_ID", "EMAILJS_PUBLIC_KEY")
+    )
+    if not all(_EMAILJS_VALUE.fullmatch(value) for value in values):
+        raise _delivery_failure("configuration")
+    return values
+
+
+def emailjs_configuration_ready() -> bool:
+    """Report only whether local EmailJS configuration has a plausible shape."""
+    try:
+        _emailjs_configuration()
+        return True
+    except EmailDeliveryFailure:
+        return False
+
+
+def _bounded_retry_after(value: Any) -> Optional[int]:
+    text = str(value).strip() if value is not None else ""
+    if not text.isdecimal():
+        return None
+    retry_after = int(text)
+    if 0 < retry_after <= MAX_SAFE_RETRY_AFTER:
+        return retry_after
+    return None
+
+
+def _allowlisted_provider_category(response: Any) -> Optional[str]:
+    """Compare a short provider signal in memory, then discard it."""
+    try:
+        signal = response.text
+    except Exception:
+        return None
+    if not isinstance(signal, str) or len(signal) > 128:
+        return None
+    normalized = " ".join(signal.strip().lower().split())
+    if normalized in _EMAILJS_TEMPLATE_SIGNALS:
+        return "template"
+    if normalized in _EMAILJS_RECIPIENT_SIGNALS:
+        return "recipient"
+    return None
+
+
+def _classify_emailjs_response(response: Any) -> EmailDeliveryFailure:
+    status = _safe_int(getattr(response, "status_code", 0))
+    headers = getattr(response, "headers", {}) or {}
+    retry_after = _bounded_retry_after(headers.get("Retry-After"))
+    if status in (401, 403):
+        return _delivery_failure("authentication")
+    if status == 404:
+        return _delivery_failure("template")
+    if status == 429:
+        return _delivery_failure(
+            "rate_limit", retryable=True, retry_after=retry_after
+        )
+    if status >= 500:
+        return _delivery_failure("provider_unavailable", retryable=True)
+    allowlisted = _allowlisted_provider_category(response)
+    if allowlisted:
+        return _delivery_failure(allowlisted)
+    if status == 400:
+        return _delivery_failure("request_contract")
+    if status == 422:
+        return _delivery_failure("recipient")
+    return _delivery_failure("operation_failed")
+
+
+def _send_emailjs_otp(email: str, code: str) -> None:
+    service_id, template_id, public_key = _emailjs_configuration()
+    try:
+        response = requests.post(
+            EMAILJS_ENDPOINT,
+            json={
+                "service_id": service_id,
+                "template_id": template_id,
+                "user_id": public_key,
+                "template_params": {
+                    "email": email,
+                    "to_email": email,
+                    "otp_code": code,
+                    "otp": code,
+                    "app_name": "Vivek Marco Trader",
+                    "expiry_minutes": str(OTP_EXPIRY_SECONDS // 60),
+                },
+            },
+            timeout=EMAILJS_TIMEOUT,
+        )
+    except (requests.Timeout, requests.ConnectionError) as error:
+        raise _delivery_failure("network", retryable=True, error=error) from None
+    except requests.RequestException as error:
+        raise _delivery_failure("network", retryable=True, error=error) from None
+    except Exception as error:
+        raise _delivery_failure("operation_failed", error=error) from None
+
+    status = _safe_int(getattr(response, "status_code", 0))
+    if 200 <= status < 300:
+        return
+    raise _classify_emailjs_response(response)
+
+
+def _activate_pending_challenge(db, challenge_ref, challenge_id: str) -> bool:
+    transaction = db.transaction()
+
+    @firestore.transactional
+    def activate(active_transaction):
+        snapshot = challenge_ref.get(transaction=active_transaction)
+        if not snapshot.exists:
+            return False
+        challenge = snapshot.to_dict() or {}
+        if (
+            challenge.get("challengeId") != challenge_id
+            or challenge.get("deliveryState") != "pending"
+        ):
+            return False
+        active_transaction.update(challenge_ref, {"deliveryState": "active"})
+        return True
+
+    return bool(activate(transaction))
+
+
+def _cleanup_pending_challenge(db, challenge_ref, challenge_id: str) -> None:
+    transaction = db.transaction()
+
+    @firestore.transactional
+    def cleanup(active_transaction):
+        snapshot = challenge_ref.get(transaction=active_transaction)
+        if not snapshot.exists:
+            return
+        challenge = snapshot.to_dict() or {}
+        if (
+            challenge.get("challengeId") == challenge_id
+            and challenge.get("deliveryState") == "pending"
+        ):
+            active_transaction.delete(challenge_ref)
+
+    cleanup(transaction)
+
+
+def _legacy_challenge_is_structurally_valid(challenge: Dict[str, Any], uid: str) -> bool:
+    digest = challenge.get("codeHash")
+    nonce = challenge.get("nonce")
+    email = challenge.get("email")
+    return (
+        challenge.get("uid") == uid
+        and isinstance(email, str)
+        and bool(email)
+        and isinstance(nonce, str)
+        and bool(nonce)
+        and isinstance(digest, str)
+        and len(digest) == 64
+        and all(character in "0123456789abcdef" for character in digest.lower())
+        and _safe_int(challenge.get("authTime", 0)) > 0
+        and _safe_int(challenge.get("expiresAt", 0)) > 0
+        and _safe_int(challenge.get("attempts", -1), -1) >= 0
+    )
+
+
+def _delivery_error(failure: EmailDeliveryFailure):
+    payload = {
+        "success": False,
+        "message": "Unable to send OTP. Please try again later.",
+        "diagnosticCode": failure.diagnostic_code,
+    }
+    status = 429 if failure.category == "rate_limit" else 503
+    if failure.retry_after is not None:
+        payload["retryAfter"] = failure.retry_after
+    response = jsonify(payload)
+    response.status_code = status
+    if failure.retry_after is not None:
+        response.headers["Retry-After"] = str(failure.retry_after)
+    return response
 
 
 def create_otp_blueprint(db, firebase_app=None) -> Blueprint:
@@ -127,6 +347,7 @@ def create_otp_blueprint(db, firebase_app=None) -> Blueprint:
         now = int(time.time())
         code = f"{secrets.randbelow(900000) + 100000:06d}"
         nonce = secrets.token_urlsafe(16)
+        challenge_id = secrets.token_hex(16)
         transaction = db.transaction()
 
         @firestore.transactional
@@ -156,6 +377,8 @@ def create_otp_blueprint(db, firebase_app=None) -> Blueprint:
                 "attempts": 0,
                 "lastSentAt": now,
                 "verificationPending": False,
+                "challengeId": challenge_id,
+                "deliveryState": "pending",
             })
             return None
 
@@ -167,12 +390,40 @@ def create_otp_blueprint(db, firebase_app=None) -> Blueprint:
         if transaction_result is not None:
             return transaction_result
 
+        def cleanup_failed_attempt() -> None:
+            try:
+                _cleanup_pending_challenge(db, challenge_ref, challenge_id)
+            except Exception as cleanup_error:
+                category = classify_firestore_error(cleanup_error)
+                _log_safe_failure(
+                    f"otp_challenge_cleanup_{category}", cleanup_error
+                )
+
         try:
             _send_emailjs_otp(email, code)
+        except EmailDeliveryFailure as failure:
+            _log_email_failure(failure)
+            cleanup_failed_attempt()
+            return _delivery_error(failure)
         except Exception as error:
-            _log_safe_failure("otp_email_send_failed", error)
-            challenge_ref.delete()
-            return _error("Unable to send OTP. Please try again later.", 503)
+            failure = _delivery_failure("operation_failed", error=error)
+            _log_email_failure(failure)
+            cleanup_failed_attempt()
+            return _delivery_error(failure)
+
+        try:
+            activated = _activate_pending_challenge(
+                db, challenge_ref, challenge_id
+            )
+        except Exception as error:
+            _log_safe_failure("otp_challenge_activate_failed", error)
+            cleanup_failed_attempt()
+            return _storage_error(error)
+        if not activated:
+            cleanup_failed_attempt()
+            return _error(
+                "OTP service unavailable", 503, "otp_storage_operation_failed"
+            )
 
         return jsonify({"success": True, "message": "OTP sent successfully"})
 
@@ -208,6 +459,18 @@ def create_otp_blueprint(db, firebase_app=None) -> Blueprint:
                 return _error("No OTP found. Please request a new one.", 404)
 
             challenge = snapshot.to_dict() or {}
+            if "deliveryState" in challenge:
+                if challenge.get("deliveryState") != "active":
+                    active_transaction.delete(challenge_ref)
+                    return _error(
+                        "No active OTP found. Please request a new one.", 409
+                    )
+            elif not _legacy_challenge_is_structurally_valid(challenge, uid):
+                active_transaction.delete(challenge_ref)
+                return _error(
+                    "No active OTP found. Please request a new one.", 409
+                )
+
             if auth_time <= 0 or _safe_int(challenge.get("authTime", 0)) != auth_time:
                 active_transaction.delete(challenge_ref)
                 return _error("OTP belongs to another sign-in session. Request a new one.", 409)

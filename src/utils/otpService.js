@@ -1,4 +1,7 @@
 import { auth } from '../firebase'
+import { normalizeOtpResponse } from './otpResponse'
+
+export { normalizeOtpResponse } from './otpResponse'
 
 const API_ORIGIN = (
   import.meta.env.VITE_API_URL ||
@@ -23,12 +26,7 @@ async function otpRequest(path, payload) {
       body: JSON.stringify(payload),
     })
     const result = await response.json().catch(() => ({}))
-    return {
-      success: response.ok && result.success === true,
-      message: result.message || (response.ok ? 'Request completed' : 'OTP request failed'),
-      refreshToken: result.refreshToken === true,
-      retryAfter: result.retryAfter,
-    }
+    return normalizeOtpResponse(result, response.ok)
   } catch (error) {
     console.error('OTP service error:', error)
     return { success: false, message: 'OTP service is unavailable. Please try again.' }
