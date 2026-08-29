@@ -25,10 +25,11 @@ import hmac
 import json
 import math
 import os
+import time
 import uuid
 from firebase_admin import auth as firebase_auth, firestore
 from google.api_core.exceptions import Aborted
-from firebase_admin_setup import initialize_firebase_services
+from firebase_admin_setup import initialize_firebase_services, probe_firestore_transaction
 from auth_policy import has_current_otp_proof
 from exchange_registry import TenantExchangeRegistry
 from binance_sync import start_sync_for_user, stop_sync_for_user, get_sync_status, BinanceSyncService
@@ -924,10 +925,35 @@ def connect_user_exchange(user_id):
     })
 
 
+_FIRESTORE_PROBE_TTL_SECONDS = 60
+_firestore_probe_cache = {
+    'expiresAt': 0.0,
+    'result': {'operational': False, 'code': 'not_checked'},
+}
+
+
+def _firestore_operational_readiness():
+    now = time.monotonic()
+    if now >= _firestore_probe_cache['expiresAt']:
+        _firestore_probe_cache['result'] = probe_firestore_transaction(db)
+        _firestore_probe_cache['expiresAt'] = now + _FIRESTORE_PROBE_TTL_SECONDS
+    return dict(_firestore_probe_cache['result'])
+
+
+def _otp_configuration_ready(components):
+    return all(
+        components.get(key)
+        for key in ('firebaseAuth', 'firestore', 'hmacSecret', 'emailProvider')
+    )
+
+
 def _otp_readiness():
+    firestore_probe = _firestore_operational_readiness()
     return {
         'firebaseAuth': firebase_app is not None,
         'firestore': db is not None,
+        'firestoreOperational': firestore_probe['operational'],
+        'firestoreCode': firestore_probe['code'],
         'hmacSecret': len(os.environ.get('OTP_HMAC_SECRET', '').strip()) >= 32,
         'emailProvider': all(
             os.environ.get(key, '').strip()
@@ -936,14 +962,22 @@ def _otp_readiness():
     }
 
 
+def _release_identifier():
+    return os.environ.get('RENDER_GIT_COMMIT', '').strip()[:12] or 'unknown'
+
+
 @app.route('/health', methods=['GET'])
 def health():
     billing_components = dict(getattr(billing_blueprint, 'billing_readiness', {}))
     billing_components['ready'] = all(billing_components.values()) if billing_components else False
     otp_components = _otp_readiness()
-    otp_components['ready'] = all(otp_components.values())
+    configured = _otp_configuration_ready(otp_components)
+    operational = configured and otp_components['firestoreOperational']
+    otp_components['ready'] = configured
+    otp_components['operational'] = operational
     return jsonify({
-        'status': 'healthy' if otp_components['ready'] else 'degraded',
+        'status': 'healthy' if operational else 'degraded',
+        'release': _release_identifier(),
         'exchange': exchange_registry.connected_count() > 0,
         'firebase': firebase_app is not None and db is not None,
         'otp': otp_components,
@@ -957,12 +991,16 @@ def health():
 @app.route('/ready', methods=['GET'])
 def ready():
     otp_components = _otp_readiness()
-    ready_status = all(otp_components.values())
+    configured = _otp_configuration_ready(otp_components)
+    operational = configured and otp_components['firestoreOperational']
+    otp_components['ready'] = configured
+    otp_components['operational'] = operational
     return jsonify({
-        'status': 'ready' if ready_status else 'not_ready',
-        'otp': {**otp_components, 'ready': ready_status},
+        'status': 'ready' if operational else 'degraded',
+        'release': _release_identifier(),
+        'otp': otp_components,
         'timestamp': datetime.now().isoformat(),
-    }), 200 if ready_status else 503
+    }), 200 if configured else 503
 
 
 @app.route('/alerts', methods=['GET'])

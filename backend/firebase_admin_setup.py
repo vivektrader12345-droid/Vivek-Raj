@@ -29,6 +29,48 @@ def _log_safe_failure(event, error):
     print("[WARN] %s (%s)" % (event, type(error).__name__))
 
 
+def classify_firestore_error(error):
+    """Return a non-secret, stable category for Firestore operational failures."""
+    error_types = {error_type.__name__ for error_type in type(error).__mro__}
+    categories = (
+        ("PermissionDenied", "permission_denied"),
+        ("Forbidden", "permission_denied"),
+        ("Unauthenticated", "authentication_failed"),
+        ("NotFound", "database_not_found"),
+        ("DeadlineExceeded", "timeout"),
+        ("ServiceUnavailable", "service_unavailable"),
+        ("ResourceExhausted", "quota_exhausted"),
+        ("Aborted", "transaction_aborted"),
+        ("TypeError", "invalid_data"),
+        ("ValueError", "invalid_data"),
+    )
+    for error_type, category in categories:
+        if error_type in error_types:
+            return category
+    return "operation_failed"
+
+
+def probe_firestore_transaction(db):
+    """Exercise a bounded, read-only transaction without exposing document data."""
+    if db is None:
+        return {"operational": False, "code": "client_unavailable"}
+
+    try:
+        reference = db.collection("_system_health").document("firestore")
+        transaction = db.transaction(max_attempts=1)
+
+        @firestore.transactional
+        def read_probe(active_transaction):
+            reference.get(transaction=active_transaction, timeout=5)
+
+        read_probe(transaction)
+        return {"operational": True, "code": None}
+    except Exception as error:
+        code = classify_firestore_error(error)
+        _log_safe_failure("firestore_probe_failed:%s" % code, error)
+        return {"operational": False, "code": code}
+
+
 def initialize_firebase_services(project_id=None):
     """Initialize or reuse the default Firebase app through ADC.
 
