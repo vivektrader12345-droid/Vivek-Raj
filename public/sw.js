@@ -1,8 +1,7 @@
-const CACHE_VERSION = 'vmt-pwa-v1'
+const CACHE_VERSION = 'vmt-pwa-v2'
 const APP_SHELL_CACHE = `${CACHE_VERSION}-app-shell`
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const APP_SHELL = [
-  '/',
   '/index.html',
   '/manifest.json',
   '/icons/icon-192.png',
@@ -33,19 +32,25 @@ async function precacheAppShell() {
 }
 
 self.addEventListener('install', event => {
-  event.waitUntil(precacheAppShell())
+  event.waitUntil(precacheAppShell().then(() => self.skipWaiting()))
 })
 
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(
-        keys
-          .filter(key => key.startsWith('vmt-pwa-') && key !== APP_SHELL_CACHE && key !== STATIC_CACHE)
-          .map(key => caches.delete(key)),
-      ))
-      .then(() => self.clients.claim()),
+async function activateWorker() {
+  const keys = await caches.keys()
+  const obsoleteKeys = keys.filter(
+    key => key.startsWith('vmt-pwa-') && key !== APP_SHELL_CACHE && key !== STATIC_CACHE,
   )
+  await Promise.all(obsoleteKeys.map(key => caches.delete(key)))
+  await self.clients.claim()
+
+  if (obsoleteKeys.length) {
+    const windowClients = await self.clients.matchAll({ type: 'window' })
+    await Promise.all(windowClients.map(client => client.navigate(client.url).catch(() => undefined)))
+  }
+}
+
+self.addEventListener('activate', event => {
+  event.waitUntil(activateWorker())
 })
 
 function isSensitiveRequest(request, url) {
@@ -58,13 +63,11 @@ function isSensitiveRequest(request, url) {
 async function networkFirstNavigation(request) {
   const cache = await caches.open(APP_SHELL_CACHE)
   try {
-    const response = await fetch(request)
+    const response = await fetch(request, { cache: 'no-store' })
     if (response.ok && response.type === 'basic') await cache.put('/index.html', response.clone())
     return response
   } catch {
-    return (await cache.match(request, { ignoreSearch: true })) ||
-      (await cache.match('/index.html')) ||
-      Response.error()
+    return (await cache.match('/index.html')) || Response.error()
   }
 }
 
@@ -94,7 +97,7 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(request.url)
   if (url.origin !== self.location.origin || isSensitiveRequest(request, url)) return
-  if (url.pathname === '/downloads/vivek-marco-trader.apk') return
+  if (url.pathname.startsWith('/downloads/')) return
 
   if (request.mode === 'navigate') {
     event.respondWith(networkFirstNavigation(request))

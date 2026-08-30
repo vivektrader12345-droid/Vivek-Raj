@@ -173,23 +173,52 @@ test('Property 1 classifier is total and conservatively identifies generated And
   }
 })
 
-test('Property 1 selector creates one fixed same-origin APK activation and removes its temporary anchor', async () => {
-  // **Validates: Requirements 2.1, 2.2, 2.4**
-  const { ANDROID_APK_FILENAME, ANDROID_APK_PATH, selectAndroidApk } = await import(selectionModule)
+test('Property 1 activation uses one verified digest-versioned same-origin URL and removes its temporary anchor', async () => {
+  // **Validates: Requirements 2.1, 2.2, 2.4, 2.6**
+  const {
+    ANDROID_APK_FILENAME,
+    ANDROID_APK_PATH,
+    activateAndroidApk,
+  } = await import(selectionModule)
+  const descriptor = {
+    schemaVersion: 2,
+    path: APK_PATH,
+    filename: APK_FILENAME,
+    mediaType: 'application/vnd.android.package-archive',
+    applicationId: 'com.vivekmarco.trader',
+    versionCode: 3,
+    versionName: '1.0.2',
+    sourceRevision: 'a'.repeat(40),
+    byteSize: 2_000_000,
+    sha256: 'b'.repeat(64),
+    signer: {
+      classification: 'approved-release',
+      certificateSha256: Array(32).fill('CC').join(':'),
+    },
+  }
+  const expectedUrl = `https://app.invalid${APK_PATH}?v=${descriptor.sha256}`
 
   assert.equal(ANDROID_APK_PATH, APK_PATH)
   assert.equal(ANDROID_APK_FILENAME, APK_FILENAME)
 
   for (let seed = 0; seed < 6; seed += 1) {
     const { anchor, documentLike, observations } = createDocumentFixture(seed)
-    selectAndroidApk(documentLike)
+    const result = activateAndroidApk({
+      descriptor,
+      document: documentLike,
+      location: { origin: 'https://app.invalid' },
+      url: expectedUrl,
+    })
 
+    assert.equal(result.status, 'requested', `requested result for generated fixture ${seed}`)
+    assert.equal(result.manualUrl, expectedUrl, `manual recovery URL for generated fixture ${seed}`)
+    assert.equal(result.claimedTransferCompleted, false, `no completion claim for generated fixture ${seed}`)
     assert.deepEqual(observations.createdTags, ['a'], `created tag for generated fixture ${seed}`)
-    assert.equal(anchor.href, APK_PATH, `fixed root-relative href for generated fixture ${seed}`)
+    assert.equal(anchor.href, expectedUrl, `versioned href for generated fixture ${seed}`)
     assert.equal(anchor.download, APK_FILENAME, `stable filename for generated fixture ${seed}`)
     assert.equal(observations.clickCount, 1, `single click for generated fixture ${seed}`)
     assert.equal(observations.removeCount, 1, `single cleanup for generated fixture ${seed}`)
-    assert.ok(observations.appendedAnchors.length <= 1, `at most one temporary append for generated fixture ${seed}`)
-    if (observations.appendedAnchors.length === 1) assert.equal(observations.appendedAnchors[0], anchor)
+    assert.equal(observations.appendedAnchors.length, 1, `one temporary append for generated fixture ${seed}`)
+    assert.equal(observations.appendedAnchors[0], anchor)
   }
 })

@@ -8,14 +8,23 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const fixturePath = '/tests/pwaInstallPrompt.fixture.html'
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 const APK_PATH = '/downloads/vivek-marco-trader.apk'
 
 function expectedBehavior(result) {
+  const [descriptorRequest, prefixRequest, tailRequest] = result.apkNetworkRequests
   return result.selectedPath === APK_PATH
     && result.apkSelectionCount === 1
     && result.pwaPromptInvocationCount === 0
     && result.instructionsOpened === false
+    && result.apkNetworkRequests.length === 3
+    && descriptorRequest?.path === `${APK_PATH}.json`
+    && descriptorRequest?.range === null
+    && prefixRequest?.path === APK_PATH
+    && prefixRequest?.range === 'bytes=0-3'
+    && tailRequest?.path === APK_PATH
+    && /^bytes=\d+-\d+$/.test(tailRequest?.range || '')
 }
 
 async function getFreePort() {
@@ -110,17 +119,21 @@ async function waitFor(client, expression, timeout = 10_000) {
 
 const browserFixtureScript = String.raw`
 (() => {
-  const query = new URLSearchParams(location.search)
-  const platform = query.has('platform') ? query.get('platform') : 'Windows'
-  const uaValue = query.has('ua')
-    ? query.get('ua')
-    : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124 Safari/537.36'
-  const uaMode = query.get('uaMode') || 'string'
-  const uaDataMode = query.get('uaData') || 'platform'
-  const standalone = query.get('standalone') === 'true'
+  let platform = 'Windows'
+  let uaValue = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124 Safari/537.36'
+  let uaMode = 'string'
+  let uaDataMode = 'platform'
+  let standalone = false
   const APK_PATH = '/downloads/vivek-marco-trader.apk'
 
-  const applyRequestedNavigatorEvidence = () => {
+  const applyRequestedNavigatorEvidence = (requested = {}) => {
+    platform = Object.hasOwn(requested, 'platform') ? requested.platform : 'Windows'
+    uaValue = Object.hasOwn(requested, 'ua')
+      ? requested.ua
+      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124 Safari/537.36'
+    uaMode = requested.uaMode || 'string'
+    uaDataMode = requested.uaData || 'platform'
+    standalone = requested.standalone === 'true'
     Object.defineProperty(navigator, 'userAgent', {
       configurable: true,
       get: () => uaMode === 'non-string' ? 17 : uaValue,
@@ -163,19 +176,23 @@ const browserFixtureScript = String.raw`
     ? { matches: standalone, media, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }
     : nativeMatchMedia(media)
 
-  window.__androidRegression = {
-    apkRequests: [],
-    downloads: [],
-    promptCalls: 0,
-    promptChoiceReads: 0,
-    beforeInstallDefaultPrevented: null,
-    appInstalledEvents: 0,
-    listeners: {
-      beforeinstallprompt: { adds: 0, removes: 0 },
-      appinstalled: { adds: 0, removes: 0 },
-    },
-    unhandled: [],
+  const resetAndroidRegression = () => {
+    window.__androidRegression = {
+      apkRequests: [],
+      downloads: [],
+      promptCalls: 0,
+      promptChoiceReads: 0,
+      beforeInstallDefaultPrevented: null,
+      appInstalledEvents: 0,
+      listeners: {
+        beforeinstallprompt: { adds: 0, removes: 0 },
+        appinstalled: { adds: 0, removes: 0 },
+      },
+      unhandled: [],
+    }
   }
+  window.__resetAndroidRegression = resetAndroidRegression
+  resetAndroidRegression()
   addEventListener('unhandledrejection', event => {
     window.__androidRegression.unhandled.push(String(event.reason?.message || event.reason))
     event.preventDefault()
@@ -209,10 +226,43 @@ const browserFixtureScript = String.raw`
   }
 
   const nativeFetch = window.fetch.bind(window)
-  window.fetch = (input, init) => {
+  window.fetch = async (input, init) => {
     const requested = new URL(typeof input === 'string' ? input : input.url, location.href)
+    const range = new Headers(init?.headers).get('Range')
     if (requested.pathname === APK_PATH || requested.pathname === APK_PATH + '.json') {
-      window.__androidRegression.apkRequests.push({ path: requested.pathname, method: init?.method || 'GET' })
+      window.__androidRegression.apkRequests.push({
+        path: requested.pathname,
+        method: init?.method || 'GET',
+        range,
+      })
+    }
+    if (requested.pathname === APK_PATH && range) {
+      const descriptorResponse = await nativeFetch(APK_PATH + '.json?fixture=range-contract', {
+        cache: 'no-store',
+        credentials: 'omit',
+      })
+      const descriptor = await descriptorResponse.json()
+      const finalRange = 'bytes=' + (descriptor.byteSize - 1) + '-' + (descriptor.byteSize - 1)
+      const bytes = range === 'bytes=0-3'
+        ? new Uint8Array([0x50, 0x4b, 0x03, 0x04])
+        : range === finalRange
+          ? new Uint8Array([0])
+          : null
+      if (!bytes) return new Response(null, { status: 416 })
+      const start = range === 'bytes=0-3' ? 0 : descriptor.byteSize - 1
+      const end = range === 'bytes=0-3' ? 3 : descriptor.byteSize - 1
+      const response = new Response(bytes, {
+        status: 206,
+        headers: {
+          'Content-Type': descriptor.mediaType,
+          'Content-Disposition': 'attachment; filename="vivek-marco-trader.apk"',
+          'Content-Length': String(bytes.byteLength),
+          'Content-Range': 'bytes ' + start + '-' + end + '/' + descriptor.byteSize,
+          'Cache-Control': 'no-store',
+        },
+      })
+      Object.defineProperty(response, 'url', { configurable: true, value: requested.href })
+      return response
     }
     return nativeFetch(input, init)
   }
@@ -225,7 +275,7 @@ async function withBrowser(run) {
   const output = []
   const preview = spawn(process.execPath, [
     path.join(root, 'node_modules', 'vite', 'bin', 'vite.js'),
-    'preview', '--host', '127.0.0.1', '--port', String(previewPort), '--strictPort',
+    '--host', '127.0.0.1', '--port', String(previewPort), '--strictPort',
   ], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
   preview.stdout.on('data', chunk => output.push(chunk.toString()))
   preview.stderr.on('data', chunk => output.push(chunk.toString()))
@@ -240,7 +290,9 @@ async function withBrowser(run) {
 
   let client
   try {
-    await waitForHttp(`http://127.0.0.1:${previewPort}`, preview, output)
+    const origin = `http://127.0.0.1:${previewPort}`
+    await waitForHttp(`${origin}${fixturePath}`, preview, output)
+    await waitForHttp(`${origin}/tests/pwaInstallPrompt.fixture.jsx`, preview, output)
     await waitForHttp(`http://127.0.0.1:${debuggingPort}/json/version`, browser, [])
     const targets = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json()
     const page = targets.find(target => target.type === 'page')
@@ -260,15 +312,21 @@ async function withBrowser(run) {
 }
 
 async function navigate(client, origin, parameters = {}) {
-  const query = new URLSearchParams({ run: `${Date.now()}-${Math.random()}`, ...parameters })
-  const url = `${origin}/?${query}`
-  await client.send('Page.navigate', { url })
-  await waitFor(client, `location.href === ${JSON.stringify(url)}`)
-  await waitFor(client, "document.readyState === 'complete'")
-  await waitFor(client, "document.querySelector('#root')?.childElementCount > 0")
-  await client.evaluate('window.__applyRequestedNavigatorEvidence()')
+  const fixtureUrl = `${origin}${fixturePath}`
+  const fixtureLoaded = await client.evaluate(`typeof window.__resetPwaInstallPromptFixture === 'function'`)
+  if (!fixtureLoaded) {
+    const navigation = await client.send('Page.navigate', { url: fixtureUrl })
+    assert.equal(navigation.errorText, undefined, `Browser navigation failed for ${fixtureUrl}`)
+    await waitFor(client, `location.href === ${JSON.stringify(fixtureUrl)}`)
+    await waitFor(client, "window.__pwaInstallPromptFixtureReady === 'initial' && typeof window.__resetPwaInstallPromptFixture === 'function'", 30_000)
+  }
+
+  const token = `${Date.now()}-${Math.random()}`
+  await client.evaluate(`window.__resetPwaInstallPromptFixture(${JSON.stringify({ token, navigatorEvidence: parameters })})`)
+  await waitFor(client, `window.__pwaInstallPromptFixtureReady === ${JSON.stringify(token)}`)
   await client.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
   if (parameters.standalone !== 'true') {
+    await waitFor(client, "document.querySelector('#root')?.childElementCount > 0")
     await waitFor(client, "Boolean(document.querySelector('[data-pwa-install]'))")
   }
 }
@@ -556,7 +614,7 @@ test('PWA preservation: dialog accessibility, focus containment, all close paths
   })
 })
 
-test('Android classification directly selects the APK for authoritative hints and legacy fallback', { timeout: 90_000 }, async () => {
+test('Android classification verifies and selects the canonical APK for authoritative hints and legacy fallback', { timeout: 90_000 }, async () => {
   // **Validates: Requirements 2.1, 2.2, 2.4**
   const fixtures = [
     {
@@ -585,7 +643,19 @@ test('Android classification directly selects the APK for authoritative hints an
       await navigate(client, origin, fixture.parameters)
       if (fixture.promptOutcome) await installEvent(client, fixture.promptOutcome)
       await clickInstall(client)
-      await delay(250)
+      try {
+        await waitFor(client, 'window.__androidRegression.downloads.length === 1 || window.__androidRegression.unhandled.length > 0')
+      } catch (error) {
+        const diagnostics = await client.evaluate(`({
+          effectiveUserAgent: typeof navigator.userAgent === 'string' ? navigator.userAgent : typeof navigator.userAgent,
+          effectivePlatform: (() => {
+            try { return navigator.userAgentData?.platform ?? null } catch (caught) { return 'unreadable' }
+          })(),
+          regression: window.__androidRegression,
+          control: document.querySelector('[data-pwa-install]')?.outerHTML ?? null,
+        })`)
+        throw new Error(`${error.message}\nAndroid fixture: ${fixture.name}\n${JSON.stringify(diagnostics, null, 2)}`)
+      }
       const state = await snapshot(client)
       counterexamples.push({
         name: fixture.name,
@@ -602,14 +672,13 @@ test('Android classification directly selects the APK for authoritative hints an
     }
   })
 
-  const allSatisfyDirectSelection = counterexamples.every(({ result }) => expectedBehavior(result)
+  const allSatisfyVerifiedSelection = counterexamples.every(({ result }) => expectedBehavior(result)
     && result.pwaPromptChoiceReadCount === 0
-    && result.apkNetworkRequests.length === 0
     && result.unhandledErrors.length === 0)
 
   assert.equal(
-    allSatisfyDirectSelection,
+    allSatisfyVerifiedSelection,
     true,
-    `Android direct-selection counterexamples:\n${JSON.stringify(counterexamples, null, 2)}`,
+    `Android verified-selection counterexamples:\n${JSON.stringify(counterexamples, null, 2)}`,
   )
 })

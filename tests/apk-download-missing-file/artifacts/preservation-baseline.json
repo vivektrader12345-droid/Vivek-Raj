@@ -1,0 +1,719 @@
+{
+  "property": "Property 2: Preservation — Existing Application, PWA, Accessibility, and Release Security",
+  "validates": [
+    "3.1",
+    "3.2",
+    "3.3",
+    "3.4",
+    "3.5",
+    "3.6",
+    "3.7",
+    "3.8"
+  ],
+  "expectedResultOnUnfixedCode": "PASS",
+  "result": "PASS",
+  "seed": 1095781170,
+  "observations": {
+    "canonicalPublicInventory": [
+      "vivek-marco-trader.apk",
+      "vivek-marco-trader.apk.json"
+    ],
+    "selectorScenarios": 24,
+    "routeObservations": [
+      {
+        "pathname": "/",
+        "netlify": {
+          "pathname": "/",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        },
+        "redirects": {
+          "pathname": "/",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        }
+      },
+      {
+        "pathname": "/login",
+        "netlify": {
+          "pathname": "/login",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        },
+        "redirects": {
+          "pathname": "/login",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        }
+      },
+      {
+        "pathname": "/signup",
+        "netlify": {
+          "pathname": "/signup",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        },
+        "redirects": {
+          "pathname": "/signup",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        }
+      },
+      {
+        "pathname": "/subscription",
+        "netlify": {
+          "pathname": "/subscription",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        },
+        "redirects": {
+          "pathname": "/subscription",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        }
+      },
+      {
+        "pathname": "/history",
+        "netlify": {
+          "pathname": "/history",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        },
+        "redirects": {
+          "pathname": "/history",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        }
+      },
+      {
+        "pathname": "/analytics",
+        "netlify": {
+          "pathname": "/analytics",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        },
+        "redirects": {
+          "pathname": "/analytics",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        }
+      },
+      {
+        "pathname": "/pro-trading",
+        "netlify": {
+          "pathname": "/pro-trading",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        },
+        "redirects": {
+          "pathname": "/pro-trading",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        }
+      },
+      {
+        "pathname": "/settings",
+        "netlify": {
+          "pathname": "/settings",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        },
+        "redirects": {
+          "pathname": "/settings",
+          "from": "/*",
+          "to": "/index.html",
+          "status": 200
+        }
+      }
+    ],
+    "serviceWorkerObservations": [
+      {
+        "name": "/downloads/vivek-marco-trader.apk plain",
+        "url": "https://app.invalid/downloads/vivek-marco-trader.apk",
+        "observed": {
+          "respondWith": 0,
+          "fetches": 0,
+          "cacheOpens": 0,
+          "cacheMatches": 0,
+          "cachePuts": 0,
+          "responseStatus": null,
+          "responseType": null
+        }
+      },
+      {
+        "name": "/downloads/vivek-marco-trader.apk versioned",
+        "url": "https://app.invalid/downloads/vivek-marco-trader.apk?v=synthetic-digest",
+        "observed": {
+          "respondWith": 0,
+          "fetches": 0,
+          "cacheOpens": 0,
+          "cacheMatches": 0,
+          "cachePuts": 0,
+          "responseStatus": null,
+          "responseType": null
+        }
+      },
+      {
+        "name": "/downloads/vivek-marco-trader.apk.json plain",
+        "url": "https://app.invalid/downloads/vivek-marco-trader.apk.json",
+        "observed": {
+          "respondWith": 0,
+          "fetches": 0,
+          "cacheOpens": 0,
+          "cacheMatches": 0,
+          "cachePuts": 0,
+          "responseStatus": null,
+          "responseType": null
+        }
+      },
+      {
+        "name": "/downloads/vivek-marco-trader.apk.json versioned",
+        "url": "https://app.invalid/downloads/vivek-marco-trader.apk.json?v=synthetic-digest",
+        "observed": {
+          "respondWith": 0,
+          "fetches": 0,
+          "cacheOpens": 0,
+          "cacheMatches": 0,
+          "cachePuts": 0,
+          "responseStatus": null,
+          "responseType": null
+        }
+      },
+      {
+        "name": "ordinary offline navigation",
+        "url": "https://app.invalid/history",
+        "mode": "navigate",
+        "intercepted": true,
+        "observed": {
+          "respondWith": 1,
+          "fetches": 1,
+          "cacheOpens": 1,
+          "cacheMatches": 1,
+          "cachePuts": 0,
+          "responseStatus": 200,
+          "responseType": "text/html"
+        }
+      },
+      {
+        "name": "ordinary cached icon",
+        "url": "https://app.invalid/icons/icon-192.png",
+        "intercepted": true,
+        "observed": {
+          "respondWith": 1,
+          "fetches": 1,
+          "cacheOpens": 1,
+          "cacheMatches": 1,
+          "cachePuts": 0,
+          "responseStatus": 200,
+          "responseType": "text/plain;charset=UTF-8"
+        }
+      },
+      {
+        "name": "sensitive API",
+        "url": "https://app.invalid/api/trades",
+        "observed": {
+          "respondWith": 0,
+          "fetches": 0,
+          "cacheOpens": 0,
+          "cacheMatches": 0,
+          "cachePuts": 0,
+          "responseStatus": null,
+          "responseType": null
+        }
+      },
+      {
+        "name": "authorized request",
+        "url": "https://app.invalid/assets/private.js",
+        "authorization": true,
+        "observed": {
+          "respondWith": 0,
+          "fetches": 0,
+          "cacheOpens": 0,
+          "cacheMatches": 0,
+          "cachePuts": 0,
+          "responseStatus": null,
+          "responseType": null
+        }
+      },
+      {
+        "name": "cross-origin static",
+        "url": "https://cdn.invalid/assets/app.js",
+        "observed": {
+          "respondWith": 0,
+          "fetches": 0,
+          "cacheOpens": 0,
+          "cacheMatches": 0,
+          "cachePuts": 0,
+          "responseStatus": null,
+          "responseType": null
+        }
+      },
+      {
+        "name": "non-GET request",
+        "url": "https://app.invalid/manifest.json",
+        "method": "POST",
+        "observed": {
+          "respondWith": 0,
+          "fetches": 0,
+          "cacheOpens": 0,
+          "cacheMatches": 0,
+          "cachePuts": 0,
+          "responseStatus": null,
+          "responseType": null
+        }
+      }
+    ],
+    "browserObservations": [
+      {
+        "entryPoint": "public",
+        "modality": "pointer",
+        "width": 1280,
+        "observed": {
+          "mode": "public",
+          "downloads": [
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "search": "?v=0289447d05d13138d512c5419db12e3ceb09db2e31a2a9454d957255c20be70c",
+              "download": "vivek-marco-trader.apk"
+            }
+          ],
+          "errors": [],
+          "preflightRequests": [
+            {
+              "path": "/downloads/vivek-marco-trader.apk.json",
+              "range": null
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=0-3"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=5261538-5261538"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk.json",
+              "range": null
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=0-3"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=5261538-5261538"
+            }
+          ],
+          "installControlCount": 1,
+          "trigger": {
+            "label": "Close menu",
+            "expanded": "true",
+            "controls": "public-download-menu",
+            "hasPopup": "menu"
+          },
+          "menuVisible": true,
+          "menuItemVisible": true,
+          "activeIsTrigger": false,
+          "control": {
+            "text": "Manual download",
+            "title": null,
+            "tagName": "A",
+            "type": null
+          },
+          "sidebarClass": null,
+          "mobileTriggerExpanded": null,
+          "routeContentVisible": false
+        }
+      },
+      {
+        "entryPoint": "public",
+        "modality": "touch",
+        "width": 390,
+        "observed": {
+          "mode": "public",
+          "downloads": [
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "search": "?v=0289447d05d13138d512c5419db12e3ceb09db2e31a2a9454d957255c20be70c",
+              "download": "vivek-marco-trader.apk"
+            }
+          ],
+          "errors": [],
+          "preflightRequests": [
+            {
+              "path": "/downloads/vivek-marco-trader.apk.json",
+              "range": null
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=0-3"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=5261538-5261538"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk.json",
+              "range": null
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=0-3"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=5261538-5261538"
+            }
+          ],
+          "installControlCount": 1,
+          "trigger": {
+            "label": "Close menu",
+            "expanded": "true",
+            "controls": "public-download-menu",
+            "hasPopup": "menu"
+          },
+          "menuVisible": true,
+          "menuItemVisible": true,
+          "activeIsTrigger": false,
+          "control": {
+            "text": "Manual download",
+            "title": null,
+            "tagName": "A",
+            "type": null
+          },
+          "sidebarClass": null,
+          "mobileTriggerExpanded": null,
+          "routeContentVisible": false
+        }
+      },
+      {
+        "entryPoint": "public",
+        "modality": "Enter",
+        "width": 1280,
+        "observed": {
+          "mode": "public",
+          "downloads": [
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "search": "?v=0289447d05d13138d512c5419db12e3ceb09db2e31a2a9454d957255c20be70c",
+              "download": "vivek-marco-trader.apk"
+            }
+          ],
+          "errors": [],
+          "preflightRequests": [
+            {
+              "path": "/downloads/vivek-marco-trader.apk.json",
+              "range": null
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=0-3"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=5261538-5261538"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk.json",
+              "range": null
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=0-3"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=5261538-5261538"
+            }
+          ],
+          "installControlCount": 1,
+          "trigger": {
+            "label": "Close menu",
+            "expanded": "true",
+            "controls": "public-download-menu",
+            "hasPopup": "menu"
+          },
+          "menuVisible": true,
+          "menuItemVisible": true,
+          "activeIsTrigger": false,
+          "control": {
+            "text": "Manual download",
+            "title": null,
+            "tagName": "A",
+            "type": null
+          },
+          "sidebarClass": null,
+          "mobileTriggerExpanded": null,
+          "routeContentVisible": false
+        }
+      },
+      {
+        "entryPoint": "public",
+        "modality": "Space",
+        "width": 390,
+        "observed": {
+          "mode": "public",
+          "downloads": [
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "search": "?v=0289447d05d13138d512c5419db12e3ceb09db2e31a2a9454d957255c20be70c",
+              "download": "vivek-marco-trader.apk"
+            }
+          ],
+          "errors": [],
+          "preflightRequests": [
+            {
+              "path": "/downloads/vivek-marco-trader.apk.json",
+              "range": null
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=0-3"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=5261538-5261538"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk.json",
+              "range": null
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=0-3"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=5261538-5261538"
+            }
+          ],
+          "installControlCount": 1,
+          "trigger": {
+            "label": "Close menu",
+            "expanded": "true",
+            "controls": "public-download-menu",
+            "hasPopup": "menu"
+          },
+          "menuVisible": true,
+          "menuItemVisible": true,
+          "activeIsTrigger": false,
+          "control": {
+            "text": "Manual download",
+            "title": null,
+            "tagName": "A",
+            "type": null
+          },
+          "sidebarClass": null,
+          "mobileTriggerExpanded": null,
+          "routeContentVisible": false
+        }
+      },
+      {
+        "entryPoint": "public",
+        "behavior": "escape-focus-return",
+        "observed": {
+          "mode": "public",
+          "downloads": [],
+          "errors": [],
+          "preflightRequests": [
+            {
+              "path": "/downloads/vivek-marco-trader.apk.json",
+              "range": null
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=0-3"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=5261538-5261538"
+            }
+          ],
+          "installControlCount": 0,
+          "trigger": {
+            "label": "Open menu",
+            "expanded": "false",
+            "controls": "public-download-menu",
+            "hasPopup": "menu"
+          },
+          "menuVisible": false,
+          "menuItemVisible": false,
+          "activeIsTrigger": true,
+          "control": null,
+          "sidebarClass": null,
+          "mobileTriggerExpanded": null,
+          "routeContentVisible": false
+        }
+      },
+      {
+        "entryPoint": "public",
+        "behavior": "outside-dismissal",
+        "observed": {
+          "mode": "public",
+          "downloads": [],
+          "errors": [],
+          "preflightRequests": [
+            {
+              "path": "/downloads/vivek-marco-trader.apk.json",
+              "range": null
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=0-3"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=5261538-5261538"
+            }
+          ],
+          "installControlCount": 0,
+          "trigger": {
+            "label": "Open menu",
+            "expanded": "false",
+            "controls": "public-download-menu",
+            "hasPopup": "menu"
+          },
+          "menuVisible": false,
+          "menuItemVisible": false,
+          "activeIsTrigger": true,
+          "control": null,
+          "sidebarClass": null,
+          "mobileTriggerExpanded": null,
+          "routeContentVisible": false
+        }
+      },
+      {
+        "entryPoint": "authenticated",
+        "behavior": "mobile-sidebar-download",
+        "observed": {
+          "mode": "authenticated",
+          "downloads": [
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "search": "?v=0289447d05d13138d512c5419db12e3ceb09db2e31a2a9454d957255c20be70c",
+              "download": "vivek-marco-trader.apk"
+            }
+          ],
+          "errors": [],
+          "preflightRequests": [
+            {
+              "path": "/downloads/vivek-marco-trader.apk.json",
+              "range": null
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=0-3"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=5261538-5261538"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk.json",
+              "range": null
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=0-3"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=5261538-5261538"
+            }
+          ],
+          "installControlCount": 1,
+          "trigger": null,
+          "menuVisible": false,
+          "menuItemVisible": false,
+          "activeIsTrigger": false,
+          "control": {
+            "text": "Manual download",
+            "title": null,
+            "tagName": "A",
+            "type": null
+          },
+          "sidebarClass": "fixed lg:static inset-y-0 left-0 z-40 w-72 bg-gradient-to-b from-[#0a0a1f] via-[#12122a] to-[#0a0a1f] border-r border-[#2a2a5a]/30 transform transition-all duration-300 flex flex-col -translate-x-full lg:translate-x-0",
+          "mobileTriggerExpanded": "false",
+          "routeContentVisible": true
+        }
+      },
+      {
+        "entryPoint": "authenticated",
+        "behavior": "collapsed-label",
+        "observed": {
+          "mode": "authenticated",
+          "downloads": [],
+          "errors": [],
+          "preflightRequests": [
+            {
+              "path": "/downloads/vivek-marco-trader.apk.json",
+              "range": null
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=0-3"
+            },
+            {
+              "path": "/downloads/vivek-marco-trader.apk",
+              "range": "bytes=5261538-5261538"
+            }
+          ],
+          "installControlCount": 1,
+          "trigger": null,
+          "menuVisible": false,
+          "menuItemVisible": false,
+          "activeIsTrigger": false,
+          "control": {
+            "text": "",
+            "title": "Download App",
+            "tagName": "BUTTON",
+            "type": "button"
+          },
+          "sidebarClass": "fixed lg:static inset-y-0 left-0 z-40 w-20 bg-gradient-to-b from-[#0a0a1f] via-[#12122a] to-[#0a0a1f] border-r border-[#2a2a5a]/30 transform transition-all duration-300 flex flex-col -translate-x-full lg:translate-x-0",
+          "mobileTriggerExpanded": "false",
+          "routeContentVisible": true
+        }
+      }
+    ],
+    "manifest": {
+      "id": "/",
+      "startUrl": "/",
+      "scope": "/",
+      "display": "standalone",
+      "iconCount": 2
+    },
+    "routeContext": {
+      "publicEntryPoints": 1,
+      "authenticatedEntryPoints": 1,
+      "dormantPromptMounted": false
+    },
+    "releaseSecurity": {
+      "externalCertificateGate": true,
+      "nativeDownloadsRemovedBySync": true,
+      "exactPublicAllowlist": true
+    },
+    "unrelatedProductBoundaries": [
+      "authentication",
+      "subscriptions",
+      "trading",
+      "analytics",
+      "backend communication",
+      "routing"
+    ]
+  }
+}

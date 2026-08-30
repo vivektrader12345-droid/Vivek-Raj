@@ -6,11 +6,11 @@ import { useAlerts } from '../context/AlertContext'
 import { useTheme } from '../context/ThemeContext'
 import { useCurrency } from '../context/CurrencyContext'
 import ErrorBoundary from './ErrorBoundary'
-import { selectAndroidApk } from './pwaInstallSelection.js'
+import useAndroidApkDownload, { APK_DOWNLOAD_UI_PHASES } from './useAndroidApkDownload.js'
 import {
   LayoutDashboard, PlusCircle, History, BarChart3, Briefcase,
   LogOut, Menu, X, Settings, Bell, ChevronLeft, CalendarDays, Sun, Moon, Bot,
-  LineChart as LineChartIcon, RadioTower, Download, CreditCard, Crown, Lock, Tags
+  LineChart as LineChartIcon, RadioTower, Download, RefreshCw, CreditCard, Crown, Lock, Tags
 } from 'lucide-react'
 
 function Layout() {
@@ -23,12 +23,13 @@ function Layout() {
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const download = useAndroidApkDownload()
 
   const activeAlerts = alerts.filter(a => a.active && !a.triggered).length
 
-  const handleDownload = () => {
-    setSidebarOpen(false)
-    selectAndroidApk(document)
+  const handleDownload = async () => {
+    const result = await download.requestDownload()
+    if (result?.status === 'requested') setSidebarOpen(false)
   }
 
   const handleLogout = () => {
@@ -141,16 +142,78 @@ function Layout() {
               </NavLink>
             )
           })}
-          <button
-            type="button"
-            data-pwa-install
-            onClick={handleDownload}
-            title={collapsed ? 'Download App' : undefined}
-            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-gray-400 transition-all duration-200 hover:bg-[#2a2a5a]/20 hover:text-white ${collapsed ? 'justify-center px-3' : ''}`}
-          >
-            <Download size={20} aria-hidden="true" />
-            {!collapsed && <span className="text-sm font-medium">Download App</span>}
-          </button>
+          {download.phase === APK_DOWNLOAD_UI_PHASES.AVAILABLE && (
+            <button
+              type="button"
+              data-pwa-install
+              onClick={() => { void handleDownload() }}
+              title={collapsed ? 'Download App' : undefined}
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-gray-400 transition-all duration-200 hover:bg-[#2a2a5a]/20 hover:text-white ${collapsed ? 'justify-center px-3' : ''}`}
+            >
+              <Download size={20} aria-hidden="true" />
+              {!collapsed && <span className="text-sm font-medium">Download App</span>}
+            </button>
+          )}
+          {[APK_DOWNLOAD_UI_PHASES.IDLE, APK_DOWNLOAD_UI_PHASES.CHECKING, APK_DOWNLOAD_UI_PHASES.REQUESTING].includes(download.phase) && (
+            <button
+              type="button"
+              data-pwa-install
+              disabled
+              aria-busy="true"
+              title={collapsed ? (download.statusMessage || 'Checking app download availability') : undefined}
+              className={`flex w-full cursor-wait items-center gap-3 rounded-xl px-4 py-3 text-gray-500 ${collapsed ? 'justify-center px-3' : ''}`}
+            >
+              <Download size={20} aria-hidden="true" />
+              <span role="status" aria-live="polite" className={collapsed ? 'sr-only' : 'text-sm font-medium'}>
+                {download.statusMessage || 'Checking app download availability'}
+              </span>
+            </button>
+          )}
+          {download.phase === APK_DOWNLOAD_UI_PHASES.UNAVAILABLE && (
+            <div className="rounded-xl px-2 py-2 text-gray-400">
+              <p role="status" aria-live="polite" className={collapsed ? 'sr-only' : 'px-2 text-xs'}>
+                App download unavailable
+              </p>
+              <button
+                type="button"
+                data-pwa-install
+                onClick={() => { void download.retry() }}
+                title={collapsed ? 'Retry app download' : undefined}
+                className={`mt-1 flex w-full items-center gap-3 rounded-xl px-4 py-3 transition-all duration-200 hover:bg-[#2a2a5a]/20 hover:text-white ${collapsed ? 'justify-center px-3' : ''}`}
+              >
+                <RefreshCw size={20} aria-hidden="true" />
+                {!collapsed && <span className="text-sm font-medium">Retry</span>}
+              </button>
+            </div>
+          )}
+          {download.phase === APK_DOWNLOAD_UI_PHASES.MANUAL && (
+            <div className="rounded-xl px-2 py-2 text-gray-400">
+              <p role="status" aria-live="polite" className={collapsed ? 'sr-only' : 'px-2 text-xs leading-relaxed'}>
+                {download.statusMessage} If nothing happens, retry or open this page in a supported browser.
+              </p>
+              <a
+                data-pwa-install
+                href={download.manualUrl}
+                download="vivek-marco-trader.apk"
+                onClick={download.handleManualDownload}
+                title={collapsed ? 'Manual download' : undefined}
+                className={`mt-1 flex w-full items-center gap-3 rounded-xl px-4 py-3 transition-all duration-200 hover:bg-[#2a2a5a]/20 hover:text-white ${collapsed ? 'justify-center px-3' : ''}`}
+              >
+                <Download size={20} aria-hidden="true" />
+                {!collapsed && <span className="text-sm font-medium">Manual download</span>}
+              </a>
+              {!collapsed && (
+                <button
+                  type="button"
+                  onClick={() => { void handleDownload() }}
+                  className="mt-1 flex w-full items-center gap-3 rounded-xl px-4 py-2 text-gray-400 transition-all duration-200 hover:bg-[#2a2a5a]/20 hover:text-white"
+                >
+                  <RefreshCw size={18} aria-hidden="true" />
+                  <span className="text-sm font-medium">Retry</span>
+                </button>
+              )}
+            </div>
+          )}
         </nav>
 
         {/* Theme Toggle & Collapse */}

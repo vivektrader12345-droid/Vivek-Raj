@@ -12,7 +12,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const wrapperJar = path.join(root, 'android', 'gradle', 'wrapper', 'gradle-wrapper.jar')
 const signingScript = path.join(root, 'android', 'app', 'release-signing.gradle')
 const requiredToolchain = Boolean(process.env.JAVA_HOME && process.env.ANDROID_SDK_ROOT)
-const approvedCertificateSha256 = 'BB996DAFB55BE208C0CE30782F5D22ED5E1674646175E1828B3583BD290C6483'
+const approvedCertificateSha256 = '5E15FD1BBAA7C3AECCBF67710FDCE2E145CEB701A862A6EBEDE2FA3AF49F1B5E'
 
 function sanitizedSigningEnvironment(overrides = {}) {
   const environment = { ...process.env }
@@ -53,7 +53,7 @@ test('release signing is external-only and attached to release artifact tasks', 
   assert.doesNotMatch(source, /signingConfig\s+signingConfigs\.debug/u)
 })
 
-test('Android ignore rules exclude local inputs and outputs but not the public release APK', () => {
+test('Android ignore rules exclude local inputs and outputs but not public release assets', () => {
   const ignored = [
     'android/local.properties',
     'android/signing.properties',
@@ -68,6 +68,7 @@ test('Android ignore rules exclude local inputs and outputs but not the public r
   }
   const publicArtifacts = [
     'public/downloads/vivek-marco-trader.apk',
+    'public/downloads/vivek-marco-trader.apk.json',
   ]
   for (const candidate of publicArtifacts) {
     const result = spawnSync('git', ['check-ignore', '--no-index', '-q', candidate], { cwd: root })
