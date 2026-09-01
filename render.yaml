@@ -22,6 +22,8 @@ services:
         sync: false
       - key: EMAILJS_PUBLIC_KEY
         sync: false
+      - key: EMAILJS_PRIVATE_KEY
+        sync: false
       - key: WEBHOOK_BASE_URL
         value: https://vivek-raj.onrender.com
       - key: WEBHOOK_LIVE_EXECUTION_ENABLED

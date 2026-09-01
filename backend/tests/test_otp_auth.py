@@ -462,6 +462,7 @@ class EmailJsAdapterTests(unittest.TestCase):
                 "EMAILJS_SERVICE_ID": "synthetic-service",
                 "EMAILJS_TEMPLATE_ID": "synthetic-template",
                 "EMAILJS_PUBLIC_KEY": "synthetic-public-key",
+                "EMAILJS_PRIVATE_KEY": "synthetic-private-key",
             },
             clear=False,
         )
@@ -482,8 +483,10 @@ class EmailJsAdapterTests(unittest.TestCase):
         self.assertEqual(call.kwargs["timeout"], EMAILJS_TIMEOUT)
         payload = call.kwargs["json"]
         self.assertEqual(
-            set(payload), {"service_id", "template_id", "user_id", "template_params"}
+            set(payload),
+            {"service_id", "template_id", "user_id", "accessToken", "template_params"},
         )
+        self.assertEqual(payload["accessToken"], "synthetic-private-key")
         self.assertEqual(
             payload["template_params"],
             {
