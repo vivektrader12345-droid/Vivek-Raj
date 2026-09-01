@@ -141,14 +141,18 @@ def _delivery_failure(
     )
 
 
-def _emailjs_configuration() -> Tuple[str, str, str]:
-    values = tuple(
+def _emailjs_configuration() -> Tuple[str, str, str, Optional[str]]:
+    required = tuple(
         os.environ.get(key, "").strip()
         for key in ("EMAILJS_SERVICE_ID", "EMAILJS_TEMPLATE_ID", "EMAILJS_PUBLIC_KEY")
     )
-    if not all(_EMAILJS_VALUE.fullmatch(value) for value in values):
+    private_key = os.environ.get("EMAILJS_PRIVATE_KEY", "").strip() or None
+    if (
+        not all(_EMAILJS_VALUE.fullmatch(value) for value in required)
+        or (private_key is not None and not _EMAILJS_VALUE.fullmatch(private_key))
+    ):
         raise _delivery_failure("configuration")
-    return values
+    return (*required, private_key)
 
 
 def emailjs_configuration_ready() -> bool:
@@ -211,23 +215,26 @@ def _classify_emailjs_response(response: Any) -> EmailDeliveryFailure:
 
 
 def _send_emailjs_otp(email: str, code: str) -> None:
-    service_id, template_id, public_key = _emailjs_configuration()
+    service_id, template_id, public_key, private_key = _emailjs_configuration()
+    payload = {
+        "service_id": service_id,
+        "template_id": template_id,
+        "user_id": public_key,
+        "template_params": {
+            "email": email,
+            "to_email": email,
+            "otp_code": code,
+            "otp": code,
+            "app_name": "Vivek Marco Trader",
+            "expiry_minutes": str(OTP_EXPIRY_SECONDS // 60),
+        },
+    }
+    if private_key is not None:
+        payload["accessToken"] = private_key
     try:
         response = requests.post(
             EMAILJS_ENDPOINT,
-            json={
-                "service_id": service_id,
-                "template_id": template_id,
-                "user_id": public_key,
-                "template_params": {
-                    "email": email,
-                    "to_email": email,
-                    "otp_code": code,
-                    "otp": code,
-                    "app_name": "Vivek Marco Trader",
-                    "expiry_minutes": str(OTP_EXPIRY_SECONDS // 60),
-                },
-            },
+            json=payload,
             timeout=EMAILJS_TIMEOUT,
         )
     except (requests.Timeout, requests.ConnectionError) as error:
