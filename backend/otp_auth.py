@@ -310,7 +310,10 @@ def _legacy_challenge_is_structurally_valid(challenge: Dict[str, Any], uid: str)
 def _delivery_error(failure: EmailDeliveryFailure):
     payload = {
         "success": False,
-        "message": "Unable to send OTP. Please try again later.",
+        "message": (
+            "Unable to send OTP. Please try again later. "
+            f"Support code: {failure.diagnostic_code}"
+        ),
         "diagnosticCode": failure.diagnostic_code,
     }
     status = 429 if failure.category == "rate_limit" else 503
