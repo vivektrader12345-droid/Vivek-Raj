@@ -7,6 +7,7 @@ import { useSubscription } from '../context/SubscriptionContext'
 import { billingService } from '../services/billingService'
 import { addPendingBillingOrder, removePendingBillingOrder } from '../services/pendingBillingOrders'
 import { loadRazorpayCheckout } from '../services/razorpayCheckout'
+import { entitlementSourceLabel, formatEntitlementValidity } from '../services/subscriptionEntitlements'
 
 const money = paise => `₹${(Number(paise || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -54,6 +55,10 @@ export default function Subscription() {
   const originalPaise = selectedPlan?.amountPaise || 0
   const discountPaise = couponResult?.discountPaise || 0
   const finalPaise = couponResult?.amountPaise ?? originalPaise
+  const accessSourceLabel = entitlementSourceLabel(subscription)
+  const accessValidity = formatEntitlementValidity(subscription)
+  const effectivePlanLabel = subscription.planName || subscription.planId || subscription.entitlementTier || 'Premium'
+  const effectiveTier = subscription.entitlementTier || subscription.planId
 
   const resetCheckout = () => { checkoutKey.current = null }
   const selectPlan = planId => {
@@ -234,9 +239,12 @@ export default function Subscription() {
           <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <Crown className="text-emerald-400" />
-              <div><p className="font-semibold text-emerald-300">Active {subscription.planId} plan</p><p className="text-sm text-gray-400">Valid until {new Date(subscription.expiresAt).toLocaleDateString('en-IN')}</p></div>
+              <div>
+                <p className="font-semibold text-emerald-300">{accessSourceLabel} · <span className="capitalize">{effectivePlanLabel}</span></p>
+                <p className="text-sm text-gray-400"><span className="capitalize">{effectiveTier}</span> tier{accessValidity ? ` · ${accessValidity}` : ''}</p>
+              </div>
             </div>
-            <span className="w-fit rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold uppercase text-emerald-300">Active</span>
+            <span className="w-fit rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold uppercase text-emerald-300">{subscription.source === 'complimentary' ? 'Complimentary' : 'Active'}</span>
           </div>
         )}
 

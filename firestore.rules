@@ -88,6 +88,21 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Complimentary billing state and audit history are also Admin-SDK-only.
+    // An admin custom claim never grants direct Firestore access.
+    match /billing_complimentary_grants/{document=**} {
+      allow read, write: if false;
+    }
+    match /billing_complimentary_users/{document=**} {
+      allow read, write: if false;
+    }
+    match /billing_complimentary_operations/{document=**} {
+      allow read, write: if false;
+    }
+    match /billing_complimentary_audit/{document=**} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

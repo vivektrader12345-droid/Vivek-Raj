@@ -1,0 +1,374 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1. Establish preservation baselines and focused test locations": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320219206
+      },
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320245230
+      },
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320621072
+      }
+    ],
+    "2. Add regression-first tests for domain normalization, public shapes, and effective entitlement": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320219475
+      },
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320632336
+      },
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788321023142
+      }
+    ],
+    "3. Implement backend domain normalizers, canonical public shapes, and the shared resolver in `backend/billing_core.py`": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320219934
+      },
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788321037511
+      },
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788321526763
+      }
+    ],
+    "4. Add regression-first tests for the in-memory service and store transitions": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320220107
+      },
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788321540546
+      },
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788321933768
+      }
+    ],
+    "5. Implement `ComplimentaryBillingService` and equivalent `MemoryBillingStore` semantics": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320220390
+      },
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788321948992
+      },
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788322527556
+      }
+    ],
+    "6. Add Firestore store-contract and transaction regression tests": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320220707
+      },
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788322541787
+      },
+      {
+        "executionId": "aa6c6177-08bf-41f3-a064-cc0db41eaa0e",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788323412369
+      }
+    ],
+    "7. Implement Firestore grant models, resolver loading, transactions, and listing in `backend/billing_store.py`": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320220940
+      },
+      {
+        "executionId": "aa6c6177-08bf-41f3-a064-cc0db41eaa0e",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788323429230
+      },
+      {
+        "executionId": "aa6c6177-08bf-41f3-a064-cc0db41eaa0e",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788323848561
+      }
+    ],
+    "8. Integrate paid activation with complimentary priority in both stores": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320221117
+      },
+      {
+        "executionId": "aa6c6177-08bf-41f3-a064-cc0db41eaa0e",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788323873488
+      },
+      {
+        "executionId": "aa6c6177-08bf-41f3-a064-cc0db41eaa0e",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788324561482
+      }
+    ],
+    "9. Add regression-first Flask API, authentication, capability, and integration contract tests": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320221282
+      },
+      {
+        "executionId": "aa6c6177-08bf-41f3-a064-cc0db41eaa0e",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788324582150
+      },
+      {
+        "executionId": "aa6c6177-08bf-41f3-a064-cc0db41eaa0e",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788325270432
+      }
+    ],
+    "10. Implement server-derived capability policy and exact lookup/list/create/revoke APIs in `backend/billing_api.py`": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320221437
+      },
+      {
+        "executionId": "aa6c6177-08bf-41f3-a064-cc0db41eaa0e",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788325289455
+      },
+      {
+        "executionId": "aa6c6177-08bf-41f3-a064-cc0db41eaa0e",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788325685654
+      }
+    ],
+    "11. Route `/api/v1/billing/me` and backend premium authorization through the shared resolver": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320221592
+      },
+      {
+        "executionId": "aa6c6177-08bf-41f3-a064-cc0db41eaa0e",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788325709492
+      },
+      {
+        "executionId": "aa6c6177-08bf-41f3-a064-cc0db41eaa0e",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788326341691
+      }
+    ],
+    "12. Add Firestore indexes, deployment wiring, and explicit direct-client denies": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320221864
+      },
+      {
+        "executionId": "aa6c6177-08bf-41f3-a064-cc0db41eaa0e",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788326363901
+      }
+    ],
+    "13. Complete backend unit, deterministic property, Flask API/auth, and integration suites": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320222108
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788348870113
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788348886886
+      }
+    ],
+    "14. Complete Firestore emulator concurrency, security-rule, and index verification": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320222264
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788348906065
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788348915688
+      }
+    ],
+    "15. Implement and test authenticated complimentary methods in `src/services/billingService.js`": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320222411
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788348932977
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788348942942
+      }
+    ],
+    "16. Make `SubscriptionContext` and shared frontend entitlement helpers lifetime-, expiry-, and capability-aware": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320222581
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788348950917
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788348958976
+      }
+    ],
+    "17. Integrate source-aware user presentation and admin route/navigation capability gating": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320222733
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788348966421
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788348973758
+      }
+    ],
+    "18. Build the full complimentary-subscription administration page": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320222880
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788348979897
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788348986823
+      }
+    ],
+    "19. Complete frontend service, helper, context, component, route, and browser E2E coverage": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320223037
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788348995212
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788349002753
+      }
+    ],
+    "20. Add privacy-safe observability and verify staged rollout/rollback compatibility": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320223190
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788349013155
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788349022837
+      }
+    ],
+    "21. Run full end-to-end, preservation, build, and release validation": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320223438
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788349032436
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788349043069
+      }
+    ],
+    "22. Perform final spec-format and requirements/design/tasks traceability validation": [
+      {
+        "executionId": "7c6c48d3-3277-4a63-879e-a98db380bce7",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788320223764
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788349050863
+      },
+      {
+        "executionId": "b53ed9f1-d049-4e93-9558-fe77a195c36b",
+        "chatSessionId": "sess_d652f9c7-c11a-4c0a-bdaa-d63bf94b5867",
+        "timestamp": 1788349057923
+      }
+    ]
+  }
+}

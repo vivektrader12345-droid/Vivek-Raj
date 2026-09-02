@@ -46,6 +46,15 @@ services:
         sync: false
       - key: BILLING_ADMIN_EMAILS
         sync: false
+      # Keep false through rules/index, resolver, API, and frontend rollout.
+      # Setting false is the first rollback step; committed grants remain readable.
+      - key: BILLING_COMPLIMENTARY_ADMIN_ENABLED
+        value: "false"
+      # Server-only secret; never mirror this value into Vite/client configuration.
+      - key: BILLING_COMPLIMENTARY_CURSOR_SIGNING_KEY
+        sync: false
+      - key: BILLING_COMPLIMENTARY_CURSOR_KEY_ID
+        value: v1
       - key: BILLING_CHECKOUT_TTL_MINUTES
         value: "20"
       - key: BILLING_ALLOW_ZERO_AMOUNT

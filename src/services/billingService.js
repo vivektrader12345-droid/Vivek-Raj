@@ -46,6 +46,20 @@ async function parseResponse(response) {
   }
 }
 
+function appendQueryValue(params, name, value) {
+  if (value === undefined || value === null || String(value).trim() === '') return
+  params.set(name, String(value))
+}
+
+function complimentaryValidityPayload(validity) {
+  if (!validity || typeof validity !== 'object' || Array.isArray(validity)) return validity
+
+  const normalized = { type: validity.type }
+  if (validity.type === 'preset') normalized.days = validity.days
+  if (validity.type === 'custom') normalized.expiresAt = validity.expiresAt
+  return normalized
+}
+
 export function createBillingService({
   fetchAuthenticated = authenticatedFetch,
   baseUrl = BILLING_API_BASE_URL,
@@ -114,6 +128,43 @@ export function createBillingService({
     getOrderStatus: orderId => request(`${billingRoot}/orders/${encodeURIComponent(orderId)}`),
     getPayments: () => request(`${billingRoot}/payments`),
     getAdminPlans: () => request(`${adminRoot}/plans`),
+    lookupBillingUser: email => request(`${adminRoot}/users/lookup`, {
+      method: 'POST',
+      body: { email },
+    }),
+    listComplimentaryGrants: ({ limit, email, planId, status, cursor } = {}) => {
+      const params = new URLSearchParams()
+      appendQueryValue(params, 'limit', limit)
+      appendQueryValue(params, 'email', email)
+      appendQueryValue(params, 'planId', planId)
+      appendQueryValue(params, 'status', status)
+      appendQueryValue(params, 'cursor', cursor)
+      const query = params.toString()
+      return request(`${adminRoot}/complimentary-grants${query ? `?${query}` : ''}`)
+    },
+    createComplimentaryGrant: ({ targetEmail, planId, validity, reason, idempotencyKey }) => request(
+      `${adminRoot}/complimentary-grants`,
+      {
+        method: 'POST',
+        body: {
+          targetEmail,
+          planId,
+          validity: complimentaryValidityPayload(validity),
+          ...(reason !== undefined ? { reason } : {}),
+          idempotencyKey,
+        },
+      },
+    ),
+    revokeComplimentaryGrant: (grantId, { reason, idempotencyKey }) => request(
+      `${adminRoot}/complimentary-grants/${encodeURIComponent(grantId)}/revoke`,
+      {
+        method: 'POST',
+        body: {
+          ...(reason !== undefined ? { reason } : {}),
+          idempotencyKey,
+        },
+      },
+    ),
     createPlan: plan => request(`${adminRoot}/plans`, { method: 'POST', body: plan }),
     updatePlan: (planId, plan) => request(`${adminRoot}/plans/${encodeURIComponent(planId)}`, {
       method: 'PATCH', body: plan,

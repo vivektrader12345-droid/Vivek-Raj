@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 import uuid
 from functools import wraps
 
@@ -15,6 +16,7 @@ from auth_policy import has_current_otp_proof
 from billing_core import (
     BillingError,
     BillingService,
+    EffectiveEntitlementService,
     PlanCatalog,
     StoredPlanCatalog,
     inr_from_paise,
@@ -29,6 +31,7 @@ from billing_core import (
     utc_now,
 )
 from billing_store import FirestoreBillingStore
+from billing_observability import log_event, set_request_id
 from razorpay_adapter import RazorpayAdapter, RazorpayAdapterError
 
 
@@ -142,11 +145,50 @@ def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, c
         ttl = 20
     allow_zero = os.environ.get("BILLING_ALLOW_ZERO_AMOUNT", "false").strip().lower() == "true"
     service = BillingService(store, provider, catalog, ttl, allow_zero) if store is not None else None
+    entitlement_service = (
+        EffectiveEntitlementService(store, clock=utc_now)
+        if store is not None else None
+    )
     admin_emails = {
         value.strip().lower()
         for value in os.environ.get("BILLING_ADMIN_EMAILS", "").split(",")
         if value.strip()
     }
+    raw_complimentary_capability = os.environ.get("BILLING_COMPLIMENTARY_ADMIN_ENABLED")
+    complimentary_admin_enabled = bool(
+        isinstance(raw_complimentary_capability, str)
+        and raw_complimentary_capability.strip().lower() == "true"
+    )
+
+    def lookup_firebase_user(normalized_email):
+        try:
+            return firebase_auth.get_user_by_email(normalized_email, app=firebase_app)
+        except firebase_auth.UserNotFoundError:
+            return None
+
+    complimentary_service = None
+    if store is not None:
+        try:
+            from billing_core import ComplimentaryBillingService
+
+            complimentary_service = ComplimentaryBillingService(
+                store,
+                catalog,
+                lookup_firebase_user,
+                clock=utc_now,
+                cursor_signing_key=os.environ.get(
+                    "BILLING_COMPLIMENTARY_CURSOR_SIGNING_KEY"
+                ),
+                cursor_key_id=os.environ.get(
+                    "BILLING_COMPLIMENTARY_CURSOR_KEY_ID", "v1"
+                ),
+            )
+        except Exception:
+            # Complimentary administration fails closed if its server-only
+            # cursor configuration is absent or invalid. Existing billing
+            # endpoints and readiness remain independent and unchanged.
+            complimentary_service = None
+
     bp.billing_readiness = {
         "catalog": catalog_ready,
         "storage": store is not None,
@@ -169,6 +211,75 @@ def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, c
     @bp.before_request
     def assign_request_id():
         g.request_id = uuid.uuid4().hex
+        g.billing_request_started = time.perf_counter()
+        set_request_id(g.request_id)
+
+    def complimentary_log_operation():
+        path = request.path
+        if path == "/api/v1/admin/billing/users/lookup":
+            return "lookup"
+        if path == "/api/v1/admin/billing/complimentary-grants":
+            return "list" if request.method == "GET" else "grant"
+        if (
+            path.startswith("/api/v1/admin/billing/complimentary-grants/")
+            and path.endswith("/revoke")
+        ):
+            return "revoke"
+        if path == "/api/v1/billing/me":
+            return "resolver"
+        return None
+
+    @bp.after_request
+    def log_complimentary_outcome(response):
+        operation = complimentary_log_operation()
+        if operation is None:
+            set_request_id(None)
+            return response
+        payload = response.get_json(silent=True)
+        payload = payload if isinstance(payload, dict) else {}
+        error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+        error_code = error.get("code") if isinstance(error.get("code"), str) else None
+        # Successful resolver evaluations are emitted by the shared entitlement
+        # service so premium-route and /billing/me decisions share one signal.
+        if operation == "resolver" and response.status_code < 400:
+            set_request_id(None)
+            return response
+
+        duplicate = payload.get("duplicate") if type(payload.get("duplicate")) is bool else False
+        result_code = error_code
+        if result_code is None:
+            result_code = "duplicate" if duplicate else "success"
+        grant = payload.get("grant") if isinstance(payload.get("grant"), dict) else {}
+        user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+        effective = (
+            payload.get("effectiveEntitlement")
+            if isinstance(payload.get("effectiveEntitlement"), dict)
+            else {}
+        )
+        target_uid = user.get("uid") or grant.get("targetUid")
+        transition = {
+            "lookup": "looked_up",
+            "list": "listed",
+            "grant": "granted",
+            "revoke": "revoked",
+            "resolver": "resolved",
+        }[operation]
+        if error_code:
+            transition = "denied" if response.status_code in (401, 403) else "failed"
+        log_event(
+            operation=operation,
+            result_code=result_code,
+            duplicate=duplicate,
+            latency_ms=(time.perf_counter() - g.billing_request_started) * 1000,
+            actor_uid=getattr(g, "auth_uid", None),
+            target_uid=target_uid,
+            grant_id=grant.get("id"),
+            plan_id=grant.get("planId") or effective.get("planId"),
+            validity_type=grant.get("validityType") or effective.get("validityType"),
+            transition_type=transition,
+        )
+        set_request_id(None)
+        return response
 
     @bp.errorhandler(413)
     def payload_too_large(_error_value):
@@ -189,7 +300,7 @@ def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, c
         # processing failures must remain non-2xx so Razorpay retries delivery.
         return _error("billing_unavailable", "Billing is temporarily unavailable", 503)
 
-    def require_auth(admin=False):
+    def require_auth(admin=False, capability=None):
         def decorator(handler):
             @wraps(handler)
             def wrapped(*args, **kwargs):
@@ -203,6 +314,10 @@ def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, c
                     uid = decoded.get("uid") or decoded.get("sub")
                     if not uid:
                         return _error("invalid_token", "The Firebase bearer token is invalid", 401)
+                    # Bind only verified token identity before authorization so
+                    # privacy-safe denial logs can correlate repeat attempts.
+                    g.auth_uid = str(uid)
+                    g.auth_token = decoded
                     if not has_current_otp_proof(decoded):
                         return _error("otp_required", "Complete OTP verification for this sign-in session", 403)
                     email = str(decoded.get("email") or "").strip().lower()
@@ -212,8 +327,15 @@ def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, c
                     is_admin = decoded.get("admin") is True or allowlisted
                     if admin and not is_admin:
                         return _error("admin_required", "Billing administrator access is required", 403)
-                    g.auth_uid = str(uid)
-                    g.auth_token = decoded
+                    if capability is not None and (
+                        capability != "complimentarySubscriptions"
+                        or not complimentary_admin_enabled
+                    ):
+                        return _error(
+                            "admin_capability_required",
+                            "Complimentary subscription administration is disabled",
+                            403,
+                        )
                     g.billing_is_admin = is_admin
                 except firebase_auth.ExpiredIdTokenError:
                     return _error("token_expired", "Your session token expired", 401)
@@ -236,6 +358,79 @@ def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, c
             raise BillingError("persistence_unavailable", "Billing storage is temporarily unavailable", 503)
         return service
 
+    def require_complimentary_storage():
+        if store is None:
+            raise BillingError(
+                "persistence_unavailable",
+                "Complimentary billing persistence is temporarily unavailable",
+                503,
+            )
+        if complimentary_service is None:
+            raise BillingError(
+                "billing_unavailable",
+                "Complimentary billing is temporarily unavailable",
+                503,
+            )
+        return complimentary_service
+
+    def complimentary_actor():
+        return {
+            "uid": g.auth_uid,
+            "email": str(g.auth_token.get("email") or "").strip(),
+        }
+
+    @bp.post("/api/v1/admin/billing/users/lookup")
+    @require_auth(admin=True, capability="complimentarySubscriptions")
+    def admin_lookup_billing_user():
+        data = _body()
+        _allow_fields(data, {"email"})
+        result = require_complimentary_storage().lookup_user(data.get("email"))
+        return jsonify({**result, "requestId": _request_id()})
+
+    @bp.get("/api/v1/admin/billing/complimentary-grants")
+    @require_auth(admin=True, capability="complimentarySubscriptions")
+    def admin_list_complimentary_grants():
+        query = {
+            key: values[0] if len(values) == 1 else values
+            for key, values in request.args.lists()
+        }
+        result = require_complimentary_storage().list_grants(query)
+        return jsonify({**result, "requestId": _request_id()})
+
+    @bp.post("/api/v1/admin/billing/complimentary-grants")
+    @require_auth(admin=True, capability="complimentarySubscriptions")
+    def admin_create_complimentary_grant():
+        data = _body()
+        _allow_fields(
+            data,
+            {"targetEmail", "planId", "validity", "reason", "idempotencyKey"},
+        )
+        result = require_complimentary_storage().create_grant(
+            actor=complimentary_actor(),
+            target_email=data.get("targetEmail"),
+            plan_id=data.get("planId"),
+            validity=data.get("validity"),
+            reason=data.get("reason"),
+            idempotency_key=data.get("idempotencyKey"),
+        )
+        return (
+            jsonify({**result, "requestId": _request_id()}),
+            200 if result.get("duplicate") is True else 201,
+        )
+
+    @bp.post("/api/v1/admin/billing/complimentary-grants/<grant_id>/revoke")
+    @require_auth(admin=True, capability="complimentarySubscriptions")
+    def admin_revoke_complimentary_grant(grant_id):
+        data = _body()
+        _allow_fields(data, {"reason", "idempotencyKey"})
+        result = require_complimentary_storage().revoke_grant(
+            actor=complimentary_actor(),
+            grant_id=grant_id,
+            reason=data.get("reason"),
+            idempotency_key=data.get("idempotencyKey"),
+        )
+        return jsonify({**result, "requestId": _request_id()})
+
     @bp.get("/api/v1/billing/plans")
     @require_auth()
     def plans():
@@ -246,10 +441,20 @@ def create_billing_blueprint(db, firebase_app=None, store=None, provider=None, c
     @bp.get("/api/v1/billing/me")
     @require_auth()
     def me():
-        billing = require_storage()
+        if entitlement_service is None:
+            raise BillingError(
+                "persistence_unavailable",
+                "Billing storage is temporarily unavailable",
+                503,
+            )
         return jsonify({
-            "subscription": billing.subscription(g.auth_uid),
+            "subscription": entitlement_service.subscription(g.auth_uid),
             "isAdmin": bool(g.billing_is_admin),
+            "adminCapabilities": {
+                "complimentarySubscriptions": bool(
+                    g.billing_is_admin and complimentary_admin_enabled
+                ),
+            },
             "requestId": _request_id(),
         })
 

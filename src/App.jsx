@@ -21,6 +21,7 @@ const PaymentFailed = lazy(() => import('./pages/PaymentFailed'))
 const PaymentHistory = lazy(() => import('./pages/PaymentHistory'))
 const AdminPlans = lazy(() => import('./pages/AdminPlans'))
 const AdminCoupons = lazy(() => import('./pages/AdminCoupons'))
+const AdminComplimentarySubscriptions = lazy(() => import('./pages/AdminComplimentarySubscriptions'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const AddTrade = lazy(() => import('./pages/AddTrade'))
 const TradeHistory = lazy(() => import('./pages/TradeHistory'))
@@ -88,6 +89,7 @@ function App() {
                           <Route path="payments" element={<PaymentHistory />} />
                           <Route path="admin/plans" element={<AdminRoute><AdminPlans /></AdminRoute>} />
                           <Route path="admin/coupons" element={<AdminRoute><AdminCoupons /></AdminRoute>} />
+                          <Route path="admin/complimentary-subscriptions" element={<AdminRoute requiredCapability="complimentarySubscriptions"><AdminComplimentarySubscriptions /></AdminRoute>} />
                           <Route path="settings" element={<Settings />} />
                         </Route>
                         <Route path="*" element={<Navigate to="/" replace />} />

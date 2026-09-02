@@ -1,0 +1,33 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "billing_complimentary_grants",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "targetEmailNormalized", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "billing_complimentary_grants",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "planId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "billing_complimentary_grants",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "targetEmailNormalized", "order": "ASCENDING" },
+        { "fieldPath": "planId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

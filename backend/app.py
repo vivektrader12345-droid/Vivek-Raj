@@ -264,8 +264,18 @@ if 'extension_pairing' not in app.blueprints:
         db, firebase_app=firebase_app
     ))
 
-# Secure TradingView webhook intelligence APIs.
+# Secure TradingView webhook intelligence and Razorpay billing APIs share the
+# same store-backed entitlement resolver for all premium access decisions.
+from billing_api import create_billing_blueprint
+from billing_core import EffectiveEntitlementService
+from billing_store import FirestoreBillingStore
 from webhook_intelligence import create_webhook_blueprint
+
+shared_billing_store = FirestoreBillingStore(db) if db is not None else None
+shared_entitlement_service = (
+    EffectiveEntitlementService(shared_billing_store)
+    if shared_billing_store is not None else None
+)
 
 if not app.config.get('MAX_CONTENT_LENGTH'):
     app.config['MAX_CONTENT_LENGTH'] = 256 * 1024
@@ -275,12 +285,14 @@ if 'webhook_intelligence' not in app.blueprints:
         base_url=os.environ.get('WEBHOOK_BASE_URL'),
         firebase_app=firebase_app,
         enforce_entitlements=True,
+        entitlement_service=shared_entitlement_service,
     ))
 
-# Server-owned Razorpay billing APIs use top-level Admin-only collections.
-from billing_api import create_billing_blueprint
-
-billing_blueprint = create_billing_blueprint(db, firebase_app=firebase_app)
+billing_blueprint = create_billing_blueprint(
+    db,
+    firebase_app=firebase_app,
+    store=shared_billing_store,
+)
 if 'razorpay_billing' not in app.blueprints:
     app.register_blueprint(billing_blueprint)
 

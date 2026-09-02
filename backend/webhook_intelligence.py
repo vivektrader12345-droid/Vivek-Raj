@@ -25,6 +25,8 @@ from flask import Blueprint, g, jsonify, request
 from firebase_admin import auth, firestore
 
 from auth_policy import has_current_otp_proof
+from billing_core import EffectiveEntitlementService
+from billing_store import FirestoreBillingStore
 
 
 MAX_PAYLOAD_BYTES = 256 * 1024
@@ -850,10 +852,26 @@ def _trade_metrics(trades):
     }
 
 
-def create_webhook_blueprint(db, base_url=None, firebase_app=None, enforce_entitlements=False):
+def create_webhook_blueprint(
+    db,
+    base_url=None,
+    firebase_app=None,
+    enforce_entitlements=False,
+    entitlement_service=None,
+):
     """Create the webhook intelligence Blueprint for an existing Firestore client."""
     bp = Blueprint("webhook_intelligence", __name__)
     configured_base_url = (base_url or os.environ.get("WEBHOOK_BASE_URL") or "").rstrip("/")
+    if entitlement_service is None and db is not None:
+        try:
+            entitlement_service = EffectiveEntitlementService(
+                FirestoreBillingStore(db),
+                clock=_now,
+            )
+        except Exception:
+            # Premium authorization remains unavailable rather than reverting to
+            # a paid-only collection read when shared resolver wiring is invalid.
+            entitlement_service = None
 
     def public_endpoint(endpoint):
         """Return a client-safe endpoint with the configured callback origin."""
@@ -913,25 +931,16 @@ def create_webhook_blueprint(db, base_url=None, firebase_app=None, enforce_entit
                     )
                 g.auth_uid = str(uid)
                 if enforce_entitlements and request.path != "/api/v1/webhooks/health":
-                    if db is None:
+                    if entitlement_service is None:
                         return _error(
                             "subscription_service_unavailable",
                             "Subscription verification is temporarily unavailable",
                             503,
                         )
                     try:
-                        subscription_snapshot = db.collection("billing_subscriptions").document(str(uid)).get()
-                        subscription = subscription_snapshot.to_dict() if subscription_snapshot.exists else {}
-                        expires_at = subscription.get("expiresAt")
-                        if expires_at and expires_at.tzinfo is None:
-                            expires_at = expires_at.replace(tzinfo=timezone.utc)
-                        entitlement_tier = subscription.get("entitlementTier") or subscription.get("planId")
-                        plan_rank = {"basic": 1, "pro": 2, "elite": 3}.get(entitlement_tier, 0)
-                        entitled = (
-                            subscription.get("status") == "active"
-                            and expires_at is not None
-                            and expires_at > datetime.now(timezone.utc)
-                            and plan_rank >= 2
+                        entitled = entitlement_service.require_entitlement(
+                            str(uid),
+                            "pro",
                         )
                     except Exception:
                         return _error(

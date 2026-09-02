@@ -93,6 +93,171 @@ test('failure reporting and order polling never send a client amount', async () 
   assert.equal(calls.some(call => call.init.body?.includes('amount')), false)
 })
 
+test('complimentary user lookup uses the authenticated admin endpoint and email-only body', async () => {
+  const calls = []
+  const service = createBillingService({
+    baseUrl: 'https://billing.example.invalid',
+    fetchAuthenticated: async (url, init) => {
+      calls.push({ url, init })
+      return jsonResponse(200, { user: { uid: 'user-1', email: 'person@example.com' } })
+    },
+  })
+
+  await service.lookupBillingUser(' Person@Example.com ')
+
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url, 'https://billing.example.invalid/api/v1/admin/billing/users/lookup')
+  assert.equal(calls[0].init.method, 'POST')
+  assert.deepEqual(JSON.parse(calls[0].init.body), { email: ' Person@Example.com ' })
+})
+
+test('complimentary grant listing encodes filters and preserves opaque cursor content', async () => {
+  const calls = []
+  const service = createBillingService({
+    baseUrl: 'https://billing.example.invalid',
+    fetchAuthenticated: async (url, init) => {
+      calls.push({ url, init })
+      return jsonResponse(200, { grants: [], page: { nextCursor: null } })
+    },
+  })
+
+  await service.listComplimentaryGrants({
+    limit: 50,
+    email: 'person+tag@example.com',
+    planId: 'pro/annual',
+    status: 'active',
+    cursor: 'v1.key+/= &opaque?',
+    uid: 'hostile-user',
+    isAdmin: true,
+    complimentarySubscriptions: true,
+  })
+  await service.listComplimentaryGrants({
+    limit: '',
+    email: '   ',
+    planId: null,
+    status: undefined,
+    cursor: '',
+  })
+
+  assert.equal(
+    calls[0].url,
+    'https://billing.example.invalid/api/v1/admin/billing/complimentary-grants?limit=50&email=person%2Btag%40example.com&planId=pro%2Fannual&status=active&cursor=v1.key%2B%2F%3D+%26opaque%3F',
+  )
+  assert.equal(calls[0].init.method, 'GET')
+  assert.equal(calls[0].url.includes('uid='), false)
+  assert.equal(calls[0].url.includes('isAdmin='), false)
+  assert.equal(calls[0].url.includes('complimentarySubscriptions='), false)
+  assert.equal(calls[1].url, 'https://billing.example.invalid/api/v1/admin/billing/complimentary-grants')
+})
+
+test('complimentary grant creation sends only approved fields and returns authoritative duplicate result', async () => {
+  const calls = []
+  const authoritative = {
+    grant: { id: 'grant-1', status: 'active' },
+    effectiveEntitlement: { status: 'active', source: 'complimentary', planId: 'pro' },
+    paidFallback: { status: 'active', source: 'paid', planId: 'basic' },
+    duplicate: true,
+    requestId: 'request-duplicate',
+  }
+  const service = createBillingService({
+    baseUrl: 'https://billing.example.invalid',
+    fetchAuthenticated: async (url, init) => {
+      calls.push({ url, init })
+      return jsonResponse(200, authoritative)
+    },
+  })
+
+  const result = await service.createComplimentaryGrant({
+    targetEmail: 'person@example.com',
+    planId: 'pro',
+    validity: {
+      type: 'custom',
+      expiresAt: '2027-01-01T00:00:00+05:30',
+      activationAt: 'forged-client-time',
+      lifetime: true,
+      price: 0,
+    },
+    reason: 'Support resolution',
+    idempotencyKey: 'grant-operation-123',
+    targetUid: 'hostile-user',
+    isAdmin: true,
+    adminCapabilities: { complimentarySubscriptions: true },
+    planName: 'Forged Pro',
+    entitlementTier: 'elite',
+    features: ['forged'],
+    amount: 0,
+    status: 'active',
+    actorUid: 'hostile-admin',
+  })
+
+  assert.equal(calls[0].url, 'https://billing.example.invalid/api/v1/admin/billing/complimentary-grants')
+  assert.equal(calls[0].init.method, 'POST')
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    targetEmail: 'person@example.com',
+    planId: 'pro',
+    validity: { type: 'custom', expiresAt: '2027-01-01T00:00:00+05:30' },
+    reason: 'Support resolution',
+    idempotencyKey: 'grant-operation-123',
+  })
+  assert.deepEqual(result, authoritative)
+})
+
+test('complimentary grant revocation encodes the grant id and excludes hostile fields', async () => {
+  const calls = []
+  const service = createBillingService({
+    baseUrl: 'https://billing.example.invalid',
+    fetchAuthenticated: async (url, init) => {
+      calls.push({ url, init })
+      return jsonResponse(200, { grant: { id: 'grant/with ?#%', status: 'revoked' }, duplicate: false })
+    },
+  })
+
+  await service.revokeComplimentaryGrant('grant/with ?#%', {
+    reason: 'No longer needed',
+    idempotencyKey: 'revoke-operation-123',
+    targetUid: 'hostile-user',
+    status: 'revoked',
+    revokedBy: 'hostile-admin',
+    endedAt: 'forged-client-time',
+  })
+
+  assert.equal(
+    calls[0].url,
+    'https://billing.example.invalid/api/v1/admin/billing/complimentary-grants/grant%2Fwith%20%3F%23%25/revoke',
+  )
+  assert.equal(calls[0].init.method, 'POST')
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    reason: 'No longer needed',
+    idempotencyKey: 'revoke-operation-123',
+  })
+})
+
+test('complimentary API errors retain stable details and request ids', async () => {
+  const service = createBillingService({
+    baseUrl: 'https://billing.example.invalid',
+    fetchAuthenticated: async () => ({
+      ...jsonResponse(400, {
+        error: {
+          code: 'invalid_cursor',
+          message: 'The page cursor is invalid.',
+          details: { field: 'cursor' },
+        },
+      }),
+      headers: new Headers({ 'x-request-id': 'request-from-header' }),
+    }),
+  })
+
+  await assert.rejects(
+    service.listComplimentaryGrants({ cursor: 'tampered' }),
+    error => error instanceof BillingApiError
+      && error.code === 'invalid_cursor'
+      && error.status === 400
+      && error.message === 'The page cursor is invalid.'
+      && error.requestId === 'request-from-header'
+      && error.details?.field === 'cursor',
+  )
+})
+
 import {
   addPendingBillingOrder,
   entitlementTimerDelay,

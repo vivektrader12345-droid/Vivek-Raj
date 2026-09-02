@@ -6,6 +6,7 @@ import { useSubscription } from '../context/SubscriptionContext'
 import { useCurrency } from '../context/CurrencyContext'
 import { requestNotificationPermission } from '../utils/notifications'
 import { exportMonthlyReport } from '../utils/exportPDF'
+import { entitlementSourceLabel, formatEntitlementValidity } from '../services/subscriptionEntitlements'
 import CSVImport from '../components/CSVImport'
 import {
   TrendingUp, TrendingDown, Target, DollarSign, Award, Activity,
@@ -22,6 +23,10 @@ function Dashboard() {
   const stats = getStats()
 
   const recentTrades = trades.slice(0, 7)
+  const accessSourceLabel = entitlementSourceLabel(subscription)
+  const accessValidity = formatEntitlementValidity(subscription)
+  const effectivePlanLabel = subscription.planName || subscription.planId || subscription.entitlementTier || 'Premium'
+  const effectiveTier = subscription.entitlementTier || subscription.planId
 
   // Mini equity curve for dashboard
   const equityCurve = (() => {
@@ -103,8 +108,8 @@ function Dashboard() {
         <div className="flex items-center gap-3">
           <Crown className={subscriptionActive ? 'text-emerald-400' : 'text-amber-400'} />
           <div>
-            <p className="font-semibold capitalize text-white">{subscriptionActive ? `${subscription.planId} subscription active` : 'No active subscription'}</p>
-            <p className="text-sm text-gray-400">{subscriptionActive ? `Premium access until ${new Date(subscription.expiresAt).toLocaleDateString('en-IN')}` : 'Upgrade to unlock analytics, automation, webhooks and Pro Trading.'}</p>
+            <p className="font-semibold text-white">{subscriptionActive ? <><span>{accessSourceLabel}</span> · <span className="capitalize">{effectivePlanLabel}</span></> : 'No active subscription'}</p>
+            <p className="text-sm text-gray-400">{subscriptionActive ? <><span className="capitalize">{effectiveTier}</span> tier{accessValidity ? ` · ${accessValidity}` : ''}</> : 'Upgrade to unlock analytics, automation, webhooks and Pro Trading.'}</p>
           </div>
         </div>
         <Link to="/subscription" className="btn-secondary w-fit text-sm">{subscriptionActive ? 'Manage Plan' : 'View Plans'}</Link>

@@ -1,21 +1,26 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from './AuthContext'
 import { billingService } from '../services/billingService'
+import { reconcilePendingBillingOrders } from '../services/pendingBillingOrders'
 import {
-  entitlementTimerDelay,
-  MAX_ENTITLEMENT_TIMEOUT_MS,
-  reconcilePendingBillingOrders,
-} from '../services/pendingBillingOrders'
+  DISABLED_ADMIN_CAPABILITIES,
+  hasEffectivePlan,
+  INACTIVE_SUBSCRIPTION,
+  isEffectiveEntitlementActive,
+  normalizeBillingMe,
+  PLAN_RANK,
+  scheduleEntitlementRefresh,
+} from '../services/subscriptionEntitlements'
 
 const SubscriptionContext = createContext(null)
-const inactiveSubscription = Object.freeze({ status: 'inactive', planId: null, entitlementTier: null, expiresAt: null })
-export const PLAN_RANK = Object.freeze({ basic: 1, pro: 2, elite: 3 })
+export { PLAN_RANK }
 
 export function SubscriptionProvider({ children }) {
   const { user } = useAuth()
   const [plans, setPlans] = useState([])
-  const [subscription, setSubscription] = useState(inactiveSubscription)
+  const [subscription, setSubscription] = useState(INACTIVE_SUBSCRIPTION)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [adminCapabilities, setAdminCapabilities] = useState(DISABLED_ADMIN_CAPABILITIES)
   const [loading, setLoading] = useState(Boolean(user))
   const [initialized, setInitialized] = useState(false)
   const [error, setError] = useState('')
@@ -40,17 +45,22 @@ export function SubscriptionProvider({ children }) {
       if (plansResult.status === 'fulfilled') {
         setPlans(plansResult.value.plans || [])
       }
+
       if (meResult.status === 'fulfilled') {
-        setSubscription(meResult.value.subscription || inactiveSubscription)
-        setIsAdmin(Boolean(meResult.value.isAdmin))
-      } else if (!silent) {
-        setSubscription(inactiveSubscription)
+        const normalized = normalizeBillingMe(meResult.value)
+        setSubscription(normalized.subscription)
+        setIsAdmin(normalized.isAdmin)
+        setAdminCapabilities(normalized.adminCapabilities)
+      } else {
+        setSubscription(INACTIVE_SUBSCRIPTION)
         setIsAdmin(false)
+        setAdminCapabilities(DISABLED_ADMIN_CAPABILITIES)
       }
 
-      const failure = [meResult, plansResult].find(result => result.status === 'rejected')
-      if (failure) {
-        if (!silent) setError(failure.reason?.message || 'Unable to load subscription information.')
+      if (meResult.status === 'rejected') {
+        setError(meResult.reason?.message || 'Unable to load subscription information.')
+      } else if (plansResult.status === 'rejected' && !silent) {
+        setError(plansResult.reason?.message || 'Unable to load subscription information.')
       } else {
         setError('')
       }
@@ -63,6 +73,11 @@ export function SubscriptionProvider({ children }) {
     }
   }, [user?.uid])
 
+  const refreshAfterMutation = useCallback(
+    () => refresh({ silent: true }),
+    [refresh],
+  )
+
   const reconcilePending = useCallback(() => {
     if (!user?.uid) return Promise.resolve([])
     if (reconciliation.current) return reconciliation.current
@@ -70,21 +85,22 @@ export function SubscriptionProvider({ children }) {
     const operation = reconcilePendingBillingOrders({
       uid,
       getOrderStatus: billingService.getOrderStatus,
-      refresh: () => refresh({ silent: true }),
+      refresh: refreshAfterMutation,
     }).finally(() => {
       if (reconciliation.current === operation) reconciliation.current = null
     })
     reconciliation.current = operation
     return operation
-  }, [user?.uid, refresh])
+  }, [user?.uid, refreshAfterMutation])
 
   useEffect(() => {
     if (!user) {
       requestGeneration.current += 1
       reconciliation.current = null
       setPlans([])
-      setSubscription(inactiveSubscription)
+      setSubscription(INACTIVE_SUBSCRIPTION)
       setIsAdmin(false)
+      setAdminCapabilities(DISABLED_ADMIN_CAPABILITIES)
       setError('')
       setLoading(false)
       setInitialized(true)
@@ -116,43 +132,60 @@ export function SubscriptionProvider({ children }) {
   }, [user?.uid, reconcilePending, refresh])
 
   useEffect(() => {
-    if (!user?.uid || !subscription?.expiresAt) return undefined
-    const expiresAt = new Date(subscription.expiresAt).getTime()
-    if (!Number.isFinite(expiresAt)) return undefined
-    const remaining = expiresAt - Date.now()
-    const delay = entitlementTimerDelay(expiresAt)
-    if (remaining <= 0 || delay <= 0) return undefined
-    const timer = window.setTimeout(() => {
-      setEntitlementNow(Date.now())
-      if (remaining <= MAX_ENTITLEMENT_TIMEOUT_MS) refresh({ silent: true })
-    }, delay)
-    return () => window.clearTimeout(timer)
-  }, [user?.uid, subscription?.expiresAt, entitlementNow, refresh])
+    if (!user?.uid) return undefined
+    return scheduleEntitlementRefresh(subscription, {
+      now: Date.now(),
+      setTimeoutFn: (callback, delay) => window.setTimeout(callback, delay),
+      clearTimeoutFn: timer => window.clearTimeout(timer),
+      onTick: () => setEntitlementNow(Date.now()),
+      onRefresh: refreshAfterMutation,
+    })
+  }, [
+    user?.uid,
+    subscription?.status,
+    subscription?.lifetime,
+    subscription?.expiresAt,
+    entitlementNow,
+    refreshAfterMutation,
+  ])
 
-  const active = useMemo(() => {
-    if (subscription?.status !== 'active' || !subscription?.expiresAt) return false
-    const expiresAt = new Date(subscription.expiresAt).getTime()
-    return Number.isFinite(expiresAt) && expiresAt > entitlementNow
-  }, [subscription, entitlementNow])
+  const active = useMemo(
+    () => isEffectiveEntitlementActive(subscription, entitlementNow),
+    [subscription, entitlementNow],
+  )
 
-  const hasPlan = useCallback(requiredPlan => {
-    const requiredRank = PLAN_RANK[requiredPlan] || Number.MAX_SAFE_INTEGER
-    const entitlementTier = subscription?.entitlementTier || subscription?.planId
-    return active && (PLAN_RANK[entitlementTier] || 0) >= requiredRank
-  }, [active, subscription?.entitlementTier, subscription?.planId])
+  const hasPlan = useCallback(
+    requiredPlan => hasEffectivePlan(subscription, requiredPlan, entitlementNow),
+    [subscription, entitlementNow],
+  )
 
   const value = useMemo(() => ({
     plans,
     subscription,
     isAdmin,
+    adminCapabilities,
     loading,
     initialized,
     error,
     active,
     hasPlan,
     refresh,
+    refreshAfterMutation,
     reconcilePending,
-  }), [plans, subscription, isAdmin, loading, initialized, error, active, hasPlan, refresh, reconcilePending])
+  }), [
+    plans,
+    subscription,
+    isAdmin,
+    adminCapabilities,
+    loading,
+    initialized,
+    error,
+    active,
+    hasPlan,
+    refresh,
+    refreshAfterMutation,
+    reconcilePending,
+  ])
 
   return <SubscriptionContext.Provider value={value}>{children}</SubscriptionContext.Provider>
 }

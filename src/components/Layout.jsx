@@ -8,14 +8,19 @@ import { useCurrency } from '../context/CurrencyContext'
 import ErrorBoundary from './ErrorBoundary'
 import useAndroidApkDownload, { APK_DOWNLOAD_UI_PHASES } from './useAndroidApkDownload.js'
 import {
+  canAccessAdminCapability,
+  entitlementSourceLabel,
+  formatEntitlementValidity,
+} from '../services/subscriptionEntitlements.js'
+import {
   LayoutDashboard, PlusCircle, History, BarChart3, Briefcase,
   LogOut, Menu, X, Settings, Bell, ChevronLeft, CalendarDays, Sun, Moon, Bot,
-  LineChart as LineChartIcon, RadioTower, Download, RefreshCw, CreditCard, Crown, Lock, Tags
+  LineChart as LineChartIcon, RadioTower, Download, RefreshCw, CreditCard, Crown, Gift, Lock, Tags
 } from 'lucide-react'
 
 function Layout() {
   const { user, logout } = useAuth()
-  const { subscription, active: subscriptionActive, isAdmin, hasPlan } = useSubscription()
+  const { subscription, active: subscriptionActive, isAdmin, adminCapabilities, hasPlan } = useSubscription()
   const { alerts } = useAlerts()
   const { theme, toggleTheme } = useTheme()
   const { currency, toggleCurrency, exchangeRate } = useCurrency()
@@ -26,6 +31,14 @@ function Layout() {
   const download = useAndroidApkDownload()
 
   const activeAlerts = alerts.filter(a => a.active && !a.triggered).length
+  const complimentaryAdminEnabled = canAccessAdminCapability(
+    isAdmin,
+    adminCapabilities,
+    'complimentarySubscriptions',
+  )
+  const accessSourceLabel = entitlementSourceLabel(subscription)
+  const accessValidity = formatEntitlementValidity(subscription)
+  const effectivePlanLabel = subscription?.planName || subscription?.planId || subscription?.entitlementTier || 'Premium'
 
   const handleDownload = async () => {
     const result = await download.requestDownload()
@@ -50,9 +63,12 @@ function Layout() {
     { to: '/pro-trading', icon: LineChartIcon, label: '⚡ Pro Trading', requiredPlan: 'elite' },
     { to: '/portfolio', icon: Briefcase, label: 'Portfolio' },
     { to: '/alerts', icon: Bell, label: 'Alerts', badge: activeAlerts },
-    ...(isAdmin ? [
+    ...(isAdmin === true ? [
       { to: '/admin/plans', icon: Crown, label: 'Plan Admin' },
       { to: '/admin/coupons', icon: Tags, label: 'Coupon Admin' },
+    ] : []),
+    ...(complimentaryAdminEnabled ? [
+      { to: '/admin/complimentary-subscriptions', icon: Gift, label: 'Complimentary Subscriptions' },
     ] : []),
     { to: '/settings', icon: Settings, label: 'Settings' },
   ]
@@ -97,8 +113,11 @@ function Layout() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-white font-medium truncate">{user?.fullName}</p>
                   <p className="text-xs text-gray-400 truncate">{user?.email}</p>
-                  <span className={`mt-1.5 inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${subscriptionActive ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'}`}>
-                    <Crown size={10} /> {subscriptionActive ? `${subscription?.planId} active` : 'Upgrade plan'}
+                  <span
+                    className={`mt-1.5 inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${subscriptionActive ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'}`}
+                    title={subscriptionActive && accessValidity ? `${accessSourceLabel} · ${accessValidity}` : undefined}
+                  >
+                    <Crown size={10} /> {subscriptionActive ? `${subscription.source === 'complimentary' ? 'Complimentary' : 'Active'} ${effectivePlanLabel}` : 'Upgrade plan'}
                   </span>
                 </div>
               </div>

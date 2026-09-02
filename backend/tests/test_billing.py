@@ -1,5 +1,6 @@
 import json
 import unittest
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
@@ -9,6 +10,7 @@ from billing_api import create_billing_blueprint
 from billing_core import (
     BillingError,
     BillingService,
+    EffectiveEntitlementService,
     MAX_CLIENT_FAILURE_ATTEMPTS,
     MemoryBillingStore,
     PlanCatalog,
@@ -75,6 +77,69 @@ class BillingCoreTests(unittest.TestCase):
         self.provider.payments[payment_id] = payment
         signature = self.provider.checkout_signature(order["orderId"], payment_id)
         return self.service.verify_payment("user-1", order["orderId"], payment_id, signature)
+
+    def select_complimentary_grant(self, *, lifetime=False, expires_at=None):
+        grant_id = "grant-overlap-001"
+        activation = self.clock.value
+        grant = {
+            "id": grant_id,
+            "targetUid": "user-1",
+            "targetEmail": "person@example.invalid",
+            "targetEmailNormalized": "person@example.invalid",
+            "targetDisplayName": "Person",
+            "planId": "pro",
+            "planSnapshot": {
+                "id": "pro",
+                "name": "Pro",
+                "entitlementTier": "pro",
+                "features": ["Advanced analytics"],
+                "revision": 1,
+            },
+            "validityType": "lifetime" if lifetime else "custom",
+            "presetDays": None,
+            "activationAt": activation,
+            "expiresAt": None if lifetime else expires_at,
+            "lifetime": lifetime,
+            "storedStatus": "active",
+            "createdAt": activation,
+            "updatedAt": activation,
+            "createdBy": {"uid": "admin-user", "email": "admin@example.invalid"},
+            "reason": None,
+            "endedAt": None,
+            "endReason": None,
+            "revokedBy": None,
+            "supersededByGrantId": None,
+            "supersededBy": None,
+            "creationOperationId": "operation-overlap-001",
+            "schemaVersion": 1,
+        }
+        self.store.complimentary_grants[grant_id] = grant
+        self.store.complimentary_users["user-1"] = {
+            "targetUid": "user-1",
+            "activeGrantId": grant_id,
+            "revision": 1,
+            "updatedAt": activation,
+            "schemaVersion": 1,
+        }
+        return grant
+
+    def capture_from_webhook(self, order, payment_id="pay_webhook_overlap"):
+        self.provider.payments[payment_id] = {
+            "id": payment_id,
+            "order_id": order["orderId"],
+            "amount": order["amountPaise"],
+            "currency": "INR",
+            "status": "captured",
+            "captured": True,
+            "method": "card",
+            "bank": None,
+            "wallet": None,
+            "vpa": None,
+            "created_at": int(self.clock.value.timestamp()),
+            "fee": 100,
+            "tax": 18,
+        }
+        return self.service.reconcile_webhook_payment(order["orderId"], payment_id)
 
     def assert_coupon_error(self, code, expected, plan="basic"):
         with self.assertRaises(BillingError) as raised:
@@ -222,6 +287,96 @@ class BillingCoreTests(unittest.TestCase):
         self.assertEqual(first["subscription"]["status"], "active")
         self.assertEqual(first["subscription"]["expiresAt"], "2025-01-31T12:00:00Z")
         self.assertEqual(len(self.store.payments), 1)
+
+    # **Validates: Requirements 9.2-9.4, 10.1-10.3, 10.6-10.7, 18.2**
+    def test_browser_payment_during_finite_grant_commits_paid_and_restores_it_at_grant_boundary(self):
+        grant = self.select_complimentary_grant(
+            expires_at=self.clock.value + timedelta(days=7),
+        )
+        complimentary_before = deepcopy({
+            "grants": self.store.complimentary_grants,
+            "pointers": self.store.complimentary_users,
+        })
+        order, _ = self.create_order()
+
+        first = self.capture(order, "pay_browser_overlap")
+        duplicate = self.capture(order, "pay_browser_overlap")
+
+        self.assertFalse(first["duplicate"])
+        self.assertTrue(duplicate["duplicate"])
+        self.assertEqual(first["subscription"]["source"], "complimentary")
+        self.assertEqual(first["subscription"]["grantId"], grant["id"])
+        self.assertEqual(first["paidFallback"]["source"], "paid")
+        self.assertEqual(first["paidFallback"]["expiresAt"], "2025-01-31T12:00:00Z")
+        self.assertEqual(duplicate["subscription"], first["subscription"])
+        self.assertEqual(duplicate["paidFallback"], first["paidFallback"])
+        self.assertEqual(self.store.subscriptions["user-1"]["lastPaymentId"], "pay_browser_overlap")
+        self.assertEqual(self.store.subscriptions["user-1"]["paymentCount"], 1)
+        self.assertEqual(len(self.store.payments), 1)
+        self.assertEqual(complimentary_before, {
+            "grants": self.store.complimentary_grants,
+            "pointers": self.store.complimentary_users,
+        })
+
+        self.clock.value = grant["expiresAt"]
+        restored = self.store.get_effective_entitlement("user-1", self.clock.value)
+        self.assertEqual(restored["effectiveEntitlement"]["source"], "paid")
+        self.assertEqual(restored["effectiveEntitlement"], restored["paidFallback"])
+
+    # **Validates: Requirements 10.1-10.4, 10.6-10.7, 18.2, 20.2**
+    def test_webhook_payment_paid_expiry_during_finite_overlap_does_not_restore_at_grant_end(self):
+        grant = self.select_complimentary_grant(
+            expires_at=self.clock.value + timedelta(days=60),
+        )
+        order, _ = self.create_order(key="webhook-finite-overlap")
+
+        captured = self.capture_from_webhook(order, "pay_webhook_finite")
+
+        self.assertEqual(captured["subscription"]["source"], "complimentary")
+        self.assertEqual(captured["paidFallback"]["source"], "paid")
+        paid_expiration = self.store.subscriptions["user-1"]["expiresAt"]
+        self.clock.value = paid_expiration
+        during_overlap = self.store.get_effective_entitlement("user-1", self.clock.value)
+        self.assertEqual(during_overlap["effectiveEntitlement"]["source"], "complimentary")
+        self.assertEqual(during_overlap["paidFallback"]["status"], "expired")
+
+        self.clock.value = grant["expiresAt"]
+        after_grant = self.store.get_effective_entitlement("user-1", self.clock.value)
+        self.assertEqual(after_grant["effectiveEntitlement"]["status"], "inactive")
+        self.assertIsNone(after_grant["effectiveEntitlement"]["source"])
+        self.assertEqual(after_grant["paidFallback"]["status"], "expired")
+
+    # **Validates: Requirements 10.1, 10.3-10.4, 10.6, 20.2**
+    def test_webhook_payment_during_lifetime_grant_keeps_priority_at_strict_paid_boundary(self):
+        grant = self.select_complimentary_grant(lifetime=True)
+        order, _ = self.create_order(key="webhook-lifetime-overlap")
+
+        captured = self.capture_from_webhook(order, "pay_webhook_lifetime")
+
+        self.assertEqual(captured["subscription"]["source"], "complimentary")
+        self.assertTrue(captured["subscription"]["lifetime"])
+        paid_expiration = self.store.subscriptions["user-1"]["expiresAt"]
+        self.clock.value = paid_expiration
+        boundary = self.store.get_effective_entitlement("user-1", self.clock.value)
+        self.assertEqual(boundary["effectiveEntitlement"]["source"], "complimentary")
+        self.assertEqual(boundary["paidFallback"]["status"], "expired")
+
+        grant.update({
+            "storedStatus": "revoked",
+            "updatedAt": self.clock.value,
+            "endedAt": self.clock.value,
+            "endReason": "Access ended",
+            "revokedBy": {"uid": "admin-user", "email": "admin@example.invalid"},
+        })
+        pointer = self.store.complimentary_users["user-1"]
+        pointer.update({
+            "activeGrantId": None,
+            "revision": 2,
+            "updatedAt": self.clock.value,
+        })
+        after_revoke = self.store.get_effective_entitlement("user-1", self.clock.value)
+        self.assertEqual(after_revoke["effectiveEntitlement"]["status"], "inactive")
+        self.assertIsNone(after_revoke["effectiveEntitlement"]["source"])
 
     def test_subscription_extension_starts_at_existing_expiry(self):
         first_order, _ = self.create_order()
@@ -490,7 +645,7 @@ class BillingBlueprintTests(unittest.TestCase):
     @patch("billing_api.firebase_auth.verify_id_token")
     def test_unexpected_storage_failure_is_structured_and_retryable(self, verify):
         verify.return_value = self.decoded
-        self.store.get_subscription = Mock(side_effect=RuntimeError("sensitive-storage-detail"))
+        self.store.get_effective_entitlement = Mock(side_effect=RuntimeError("sensitive-storage-detail"))
         response = self.client.get("/api/v1/billing/me", headers=self.headers)
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.get_json()["error"]["code"], "billing_unavailable")
@@ -509,67 +664,178 @@ class BillingBlueprintTests(unittest.TestCase):
         self.assertEqual(allowed.status_code, 200)
 
 
-class _SubscriptionSnapshot:
-    def __init__(self, value):
-        self.exists = value is not None
-        self.value = value
-
-    def to_dict(self):
-        return self.value
-
-
-class _SubscriptionDocument:
-    def __init__(self, value):
-        self.value = value
-
-    def get(self):
-        return _SubscriptionSnapshot(self.value)
-
-
-class _SubscriptionCollection:
-    def __init__(self, value):
-        self.value = value
-
-    def document(self, _uid):
-        return _SubscriptionDocument(self.value)
-
-
-class _SubscriptionDatabase:
-    def __init__(self, value):
-        self.value = value
-
-    def collection(self, name):
-        if name != "billing_subscriptions":
-            raise AssertionError("premium route executed before entitlement denial")
-        return _SubscriptionCollection(self.value)
+class _UnavailableEntitlementService:
+    def require_entitlement(self, _uid, _minimum_tier, now=None):
+        del now
+        raise RuntimeError("sensitive-storage-detail")
 
 
 class PremiumBackendEntitlementTests(unittest.TestCase):
-    @patch("webhook_intelligence.auth.verify_id_token")
-    def test_webhook_management_requires_pro_or_elite_subscription(self, verify):
-        verify.return_value = {
-            "uid": "basic-user",
+    def setUp(self):
+        self.clock = MutableClock()
+        self.store = MemoryBillingStore()
+        self.token = {
+            "uid": "premium-user",
             "firebase": {"sign_in_provider": "google.com"},
         }
-        database = _SubscriptionDatabase({
+
+    def paid(self, tier="pro", expires_at=None):
+        self.store.subscriptions[self.token["uid"]] = {
             "status": "active",
-            "planId": "basic",
-            "expiresAt": datetime.now(UTC) + timedelta(days=30),
-        })
-        app = Flask("premium-entitlement")
+            "planId": tier,
+            "entitlementTier": tier,
+            "startsAt": self.clock.value - timedelta(days=1),
+            "expiresAt": expires_at or self.clock.value + timedelta(days=30),
+            "updatedAt": self.clock.value,
+        }
+
+    def select_grant(self, tier="pro", *, lifetime=False, expires_at=None):
+        grant_id = "grant-premium-001"
+        activation = self.clock.value - timedelta(days=1)
+        self.store.complimentary_grants[grant_id] = {
+            "id": grant_id,
+            "targetUid": self.token["uid"],
+            "targetEmail": "premium@example.invalid",
+            "targetEmailNormalized": "premium@example.invalid",
+            "targetDisplayName": "Premium User",
+            "planId": tier,
+            "planSnapshot": {
+                "id": tier,
+                "name": tier.title(),
+                "entitlementTier": tier,
+                "features": ["Premium webhooks"],
+                "revision": 1,
+            },
+            "validityType": "lifetime" if lifetime else "custom",
+            "presetDays": None,
+            "activationAt": activation,
+            "expiresAt": None if lifetime else (expires_at or self.clock.value + timedelta(days=30)),
+            "lifetime": lifetime,
+            "storedStatus": "active",
+            "createdAt": activation,
+            "updatedAt": activation,
+            "createdBy": {"uid": "admin-user", "email": "admin@example.invalid"},
+            "reason": None,
+            "endedAt": None,
+            "endReason": None,
+            "revokedBy": None,
+            "supersededByGrantId": None,
+            "supersededBy": None,
+            "creationOperationId": "operation-premium-001",
+            "schemaVersion": 1,
+        }
+        self.store.complimentary_users[self.token["uid"]] = {
+            "targetUid": self.token["uid"],
+            "activeGrantId": grant_id,
+            "revision": 1,
+            "updatedAt": self.clock.value,
+            "schemaVersion": 1,
+        }
+        return grant_id
+
+    def request(self, entitlement_service=None, path="/api/v1/webhooks/endpoints"):
+        service = entitlement_service or EffectiveEntitlementService(
+            self.store,
+            clock=self.clock,
+        )
+        app = Flask("premium-entitlement-%s" % id(service))
         app.register_blueprint(create_webhook_blueprint(
-            database,
+            None,
             firebase_app=object(),
             enforce_entitlements=True,
+            entitlement_service=service,
         ))
+        with patch("webhook_intelligence.auth.verify_id_token", return_value=self.token):
+            return app.test_client().get(
+                path,
+                headers={"Authorization": "Bearer token"},
+            )
 
-        response = app.test_client().get(
-            "/api/v1/webhooks/endpoints",
-            headers={"Authorization": "Bearer token"},
-        )
+    # **Validates: Requirements 6.2, 18.3-18.4, 19.2, 20.6**
+    def test_paid_pro_and_elite_are_allowed_while_basic_is_denied(self):
+        for tier, expected_status in (("pro", 200), ("elite", 200), ("basic", 403)):
+            with self.subTest(tier=tier):
+                self.store.subscriptions.clear()
+                self.paid(tier)
+                response = self.request()
+                self.assertEqual(response.status_code, expected_status, response.get_data(as_text=True))
+                if expected_status == 403:
+                    self.assertEqual(response.get_json()["error"]["code"], "subscription_required")
 
-        self.assertEqual(response.status_code, 403)
+    # **Validates: Requirements 6.2, 6.4-6.5, 10.1, 17.3, 19.2**
+    def test_complimentary_pro_and_elite_support_finite_and_lifetime_access(self):
+        for tier in ("pro", "elite"):
+            for lifetime in (False, True):
+                with self.subTest(tier=tier, lifetime=lifetime):
+                    self.store.complimentary_grants.clear()
+                    self.store.complimentary_users.clear()
+                    self.select_grant(tier, lifetime=lifetime)
+                    response = self.request()
+                    self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+
+    # **Validates: Requirements 6.4, 10.3-10.4, 12.4, 19.2**
+    def test_expired_grant_denies_without_active_paid_fallback(self):
+        self.select_grant("elite", expires_at=self.clock.value)
+        response = self.request()
+        self.assertEqual(response.status_code, 403, response.get_data(as_text=True))
         self.assertEqual(response.get_json()["error"]["code"], "subscription_required")
+
+    # **Validates: Requirements 8.2, 10.3-10.4, 18.4, 20.2**
+    def test_revoke_restores_only_still_active_paid_fallback(self):
+        grant_id = self.select_grant("elite", lifetime=True)
+        self.paid("pro")
+        self.store.complimentary_users[self.token["uid"]].update({
+            "activeGrantId": None,
+            "revision": 2,
+            "updatedAt": self.clock.value,
+        })
+        grant = self.store.complimentary_grants[grant_id]
+        grant.update({
+            "storedStatus": "revoked",
+            "updatedAt": self.clock.value,
+            "endedAt": self.clock.value,
+            "endReason": "Access no longer required",
+            "revokedBy": {"uid": "admin-user", "email": "admin@example.invalid"},
+        })
+        self.assertEqual(self.request().status_code, 200)
+
+        self.paid("pro", expires_at=self.clock.value)
+        denied = self.request()
+        self.assertEqual(denied.status_code, 403, denied.get_data(as_text=True))
+        self.assertEqual(denied.get_json()["error"]["code"], "subscription_required")
+
+    # **Validates: Requirements 6.6, 12.7, 18.7, 19.2**
+    def test_malformed_and_unavailable_entitlement_state_fail_closed(self):
+        self.store.complimentary_users[self.token["uid"]] = {
+            "targetUid": self.token["uid"],
+            "activeGrantId": "missing-grant-001",
+            "revision": 1,
+            "updatedAt": self.clock.value,
+            "schemaVersion": 1,
+        }
+        malformed = self.request()
+        self.assertEqual(malformed.status_code, 503, malformed.get_data(as_text=True))
+        self.assertEqual(
+            malformed.get_json()["error"]["code"],
+            "subscription_service_unavailable",
+        )
+        self.assertNotIn("missing-grant-001", malformed.get_data(as_text=True))
+
+        unavailable = self.request(_UnavailableEntitlementService())
+        self.assertEqual(unavailable.status_code, 503, unavailable.get_data(as_text=True))
+        self.assertEqual(
+            unavailable.get_json()["error"]["code"],
+            "subscription_service_unavailable",
+        )
+        self.assertNotIn("sensitive-storage-detail", unavailable.get_data(as_text=True))
+
+    # **Validates: Requirements 18.1, 18.3, 18.7**
+    def test_health_route_remains_excluded_from_premium_authorization(self):
+        response = self.request(
+            _UnavailableEntitlementService(),
+            path="/api/v1/webhooks/health",
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
 
 
 if __name__ == "__main__":

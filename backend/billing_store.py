@@ -3,19 +3,44 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 from copy import deepcopy
 from datetime import timedelta
 
 from firebase_admin import firestore
 
+from billing_observability import log_event
 from billing_core import (
     BillingError,
     MAX_CLIENT_FAILURE_ATTEMPTS,
+    Plan,
+    _canonical_complimentary_validity,
+    _complimentary_audit_id,
+    _complimentary_operation_id,
+    _complimentary_payload_hash,
+    _complimentary_sha256,
+    _domain_error,
+    _required_utc_datetime,
+    _validate_actor,
+    _validate_uid,
+    canonical_plan_snapshot,
+    complimentary_grant_public,
+    complimentary_grant_status,
     evaluate_coupon,
+    normalize_email,
+    normalize_grant_id,
+    normalize_idempotency_key,
     normalize_plan_input,
+    normalize_plan_selector,
+    normalize_reason,
+    normalize_validity,
     plan_from_record,
     public_coupon,
+    resolve_effective_entitlement,
+    subscription_public,
     utc_now,
+    validate_complimentary_grant,
+    validate_complimentary_pointer,
 )
 
 
@@ -31,15 +56,141 @@ COLLECTIONS = {
     "subscriptions": "billing_subscriptions",
     "redemptions": "billing_coupon_redemptions",
     "events": "billing_webhook_events",
+    # These top-level collections are server/Admin-SDK persistence only. They
+    # are deliberately separate from users/{uid} so account cleanup cannot
+    # remove immutable billing history.
+    "complimentary_grants": "billing_complimentary_grants",
+    "complimentary_users": "billing_complimentary_users",
+    "complimentary_operations": "billing_complimentary_operations",
+    "complimentary_audit": "billing_complimentary_audit",
 }
+
+COMPLIMENTARY_COLLECTION_KEYS = frozenset({
+    "complimentary_grants",
+    "complimentary_users",
+    "complimentary_operations",
+    "complimentary_audit",
+})
+
+_OPERATION_FIELDS = frozenset({
+    "actorUid", "operationType", "idempotencyKeyHash", "payloadHash", "status",
+    "targetUid", "grantId", "responseSnapshot", "createdAt", "schemaVersion",
+})
+_GRANT_LIST_STATUSES = frozenset({"active", "expired", "revoked", "superseded"})
+_LIST_SCAN_BATCH = 100
+_LIST_MAX_INTERNAL_SCAN = 1000
 
 
 def _data(snapshot):
     return ({"id": snapshot.id, **(snapshot.to_dict() or {})} if snapshot.exists else None)
 
 
+def _raw_data(snapshot):
+    """Return the stored document without injecting its Firestore document ID."""
+    return deepcopy(snapshot.to_dict() or {}) if snapshot.exists else None
+
+
 def _safe_doc_id(value):
     return hashlib.sha256(str(value).encode("utf-8")).hexdigest()
+
+
+def _validate_target(target):
+    if not isinstance(target, dict):
+        raise _domain_error("The target account state is inconsistent")
+    uid = _validate_uid(target.get("uid"))
+    email = target.get("email")
+    try:
+        normalized_email = normalize_email(target.get("emailNormalized"))
+        if normalize_email(email) != normalized_email:
+            raise _domain_error("The target account state is inconsistent")
+    except BillingError as error:
+        if error.code == "billing_data_inconsistent":
+            raise
+        raise _domain_error("The target account state is inconsistent") from error
+    if target.get("disabled") is True:
+        raise BillingError("target_disabled", "The target account is disabled", 409)
+    if target.get("emailVerified") is not True or target.get("grantEligible") is not True:
+        raise BillingError(
+            "target_email_unverified", "The target email is not verified", 409,
+        )
+    display_name = target.get("displayName")
+    if display_name is not None and (
+        not isinstance(display_name, str)
+        or len(display_name.strip()) > 256
+        or any(ord(character) < 32 or ord(character) == 127 for character in display_name)
+    ):
+        raise _domain_error("The target account state is inconsistent")
+    return {
+        "uid": uid,
+        "email": email.strip(),
+        "emailNormalized": normalized_email,
+        "emailVerified": True,
+        "displayName": display_name.strip() or None if isinstance(display_name, str) else None,
+        "disabled": False,
+        "grantEligible": True,
+    }
+
+
+def _validate_operation_replay(
+    operation, actor_uid, operation_type, key_hash, payload_hash,
+):
+    if (
+        not isinstance(operation, dict)
+        or set(operation) != _OPERATION_FIELDS
+        or operation.get("actorUid") != actor_uid
+        or operation.get("operationType") != operation_type
+        or operation.get("idempotencyKeyHash") != key_hash
+        or operation.get("status") != "committed"
+        or type(operation.get("schemaVersion")) is not int
+        or operation.get("schemaVersion") < 1
+        or not isinstance(operation.get("responseSnapshot"), dict)
+    ):
+        raise _domain_error()
+    _validate_uid(operation.get("targetUid"))
+    try:
+        normalize_grant_id(operation.get("grantId"))
+        _required_utc_datetime(operation.get("createdAt"), "createdAt", consistency=True)
+    except BillingError as error:
+        if error.code == "billing_data_inconsistent":
+            raise
+        raise _domain_error() from error
+    if operation.get("payloadHash") != payload_hash:
+        raise BillingError(
+            "idempotency_conflict",
+            "Idempotency key was already used with different operation details",
+            409,
+        )
+    response = deepcopy(operation["responseSnapshot"])
+    if set(response) != {
+        "grant", "effectiveEntitlement", "paidFallback", "duplicate",
+    } or response.get("duplicate") is not False:
+        raise _domain_error()
+    grant = response.get("grant")
+    effective = response.get("effectiveEntitlement")
+    fallback = response.get("paidFallback")
+    if (
+        not isinstance(grant, dict)
+        or grant.get("id") != operation.get("grantId")
+        or grant.get("source") != "complimentary"
+        or not isinstance(effective, dict)
+        or effective.get("source") not in (None, "paid", "complimentary")
+        or (fallback is not None and (
+            not isinstance(fallback, dict) or fallback.get("source") != "paid"
+        ))
+    ):
+        raise _domain_error()
+    response["duplicate"] = True
+    return response
+
+
+def _grant_from_snapshot(snapshot):
+    value = _raw_data(snapshot)
+    if value is None:
+        return None
+    grant = validate_complimentary_grant(value)
+    if grant["id"] != snapshot.id:
+        raise _domain_error()
+    return grant
 
 
 class FirestoreBillingStore:
@@ -53,6 +204,538 @@ class FirestoreBillingStore:
 
     def _ref(self, key, document_id):
         return self.db.collection(COLLECTIONS[key]).document(str(document_id))
+
+    def get_effective_entitlement(self, uid, now, require_valid_paid=True):
+        """Load paid/pointer/grant state together and resolve it fail closed."""
+        target_uid = _validate_uid(uid)
+        evaluation_time = _required_utc_datetime(
+            now, "evaluationTime", consistency=True,
+        )
+        subscription_ref = self._ref("subscriptions", target_uid)
+        pointer_ref = self._ref("complimentary_users", target_uid)
+        transaction = self.db.transaction()
+        attempts = {"count": 0}
+
+        @firestore.transactional
+        def load(active_transaction):
+            attempts["count"] += 1
+            if attempts["count"] > 1:
+                log_event(
+                    operation="resolver_transaction",
+                    result_code="retry",
+                    duplicate=False,
+                    target_uid=target_uid,
+                    transition_type="transaction_retry",
+                )
+            paid = _raw_data(subscription_ref.get(transaction=active_transaction))
+            pointer_value = _raw_data(pointer_ref.get(transaction=active_transaction))
+            grant = None
+            if pointer_value is not None:
+                pointer = validate_complimentary_pointer(pointer_value, target_uid)
+                if pointer["activeGrantId"] is not None:
+                    grant_ref = self._ref(
+                        "complimentary_grants", pointer["activeGrantId"],
+                    )
+                    grant_snapshot = grant_ref.get(transaction=active_transaction)
+                    grant = _grant_from_snapshot(grant_snapshot)
+                    if grant is None or grant["targetUid"] != target_uid:
+                        raise _domain_error()
+                    # A selected terminal record is corrupt. An expired record
+                    # may remain selected because expiry is computed from time.
+                    if grant["storedStatus"] != "active":
+                        raise _domain_error()
+            if require_valid_paid and paid is not None:
+                subscription_public(paid, evaluation_time)
+            return resolve_effective_entitlement(paid, grant, evaluation_time)
+
+        return load(transaction)
+
+    def create_complimentary_grant(
+        self,
+        *,
+        actor,
+        target,
+        plan_id,
+        validity,
+        reason,
+        idempotency_key,
+        plan_loader,
+        clock,
+    ):
+        """Atomically grant access, superseding only the selected active grant."""
+        normalized_actor = _validate_actor(actor)
+        normalized_target = _validate_target(target)
+        normalized_plan_id = normalize_plan_selector(plan_id)
+        normalized_validity = _canonical_complimentary_validity(validity)
+        normalized_reason = normalize_reason(reason)
+        normalized_key = normalize_idempotency_key(idempotency_key)
+        operation_id = _complimentary_operation_id(
+            normalized_actor["uid"], "grant", normalized_key,
+        )
+        key_hash = _complimentary_sha256(normalized_key)
+        payload_hash = _complimentary_payload_hash({
+            "targetUid": normalized_target["uid"],
+            "targetEmail": normalized_target["emailNormalized"],
+            "planId": normalized_plan_id,
+            "validity": deepcopy(normalized_validity),
+            "reason": normalized_reason,
+        })
+        # The Firestore plan document is authoritative inside the transaction;
+        # this argument remains for parity with MemoryBillingStore's interface.
+        _ = plan_loader
+        grant_id = uuid.uuid4().hex
+        operation_ref = self._ref("complimentary_operations", operation_id)
+        plan_ref = self._ref("plans", normalized_plan_id)
+        subscription_ref = self._ref("subscriptions", normalized_target["uid"])
+        pointer_ref = self._ref("complimentary_users", normalized_target["uid"])
+        grant_ref = self._ref("complimentary_grants", grant_id)
+        transaction = self.db.transaction()
+        attempts = {"count": 0}
+
+        @firestore.transactional
+        def create(active_transaction):
+            attempts["count"] += 1
+            if attempts["count"] > 1:
+                log_event(
+                    operation="grant_transaction",
+                    result_code="retry",
+                    duplicate=False,
+                    actor_uid=normalized_actor["uid"],
+                    target_uid=normalized_target["uid"],
+                    grant_id=grant_id,
+                    plan_id=normalized_plan_id,
+                    validity_type=normalized_validity["type"],
+                    transition_type="transaction_retry",
+                )
+            # Idempotency is always read first. A replay does no other reads and
+            # performs no writes, preserving revisions and append-only audit.
+            operation = _raw_data(
+                operation_ref.get(transaction=active_transaction),
+            )
+            if operation is not None:
+                return _validate_operation_replay(
+                    operation,
+                    normalized_actor["uid"],
+                    "grant",
+                    key_hash,
+                    payload_hash,
+                )
+
+            attempt_time = _required_utc_datetime(clock(), "activationAt")
+            plan_value = _raw_data(plan_ref.get(transaction=active_transaction))
+            paid = _raw_data(
+                subscription_ref.get(transaction=active_transaction),
+            )
+            pointer_value = _raw_data(
+                pointer_ref.get(transaction=active_transaction),
+            )
+
+            if plan_value is None:
+                raise BillingError(
+                    "plan_not_found", "The selected billing plan was not found", 404,
+                )
+            if plan_value.get("id") != normalized_plan_id:
+                raise _domain_error("The selected canonical plan is inconsistent")
+            if plan_value.get("active") is not True:
+                raise BillingError(
+                    "plan_inactive", "The selected billing plan is inactive", 409,
+                )
+            plan_snapshot = canonical_plan_snapshot(plan_value)
+            attempt_validity = normalize_validity(
+                normalized_validity, attempt_time,
+            )
+            if paid is not None:
+                subscription_public(paid, attempt_time)
+
+            pointer_revision = 0
+            prior_grant = None
+            prior_ref = None
+            if pointer_value is not None:
+                pointer = validate_complimentary_pointer(
+                    pointer_value, normalized_target["uid"],
+                )
+                pointer_revision = pointer["revision"]
+                if pointer["activeGrantId"] is not None:
+                    prior_ref = self._ref(
+                        "complimentary_grants", pointer["activeGrantId"],
+                    )
+                    prior_snapshot = prior_ref.get(transaction=active_transaction)
+                    prior_grant = _grant_from_snapshot(prior_snapshot)
+                    if (
+                        prior_grant is None
+                        or prior_grant["targetUid"] != normalized_target["uid"]
+                        or prior_grant["storedStatus"] != "active"
+                    ):
+                        raise _domain_error()
+
+            grant = validate_complimentary_grant({
+                "id": grant_id,
+                "targetUid": normalized_target["uid"],
+                "targetEmail": normalized_target["email"],
+                "targetEmailNormalized": normalized_target["emailNormalized"],
+                "targetDisplayName": normalized_target["displayName"],
+                "planId": normalized_plan_id,
+                "planSnapshot": plan_snapshot,
+                "validityType": attempt_validity["validityType"],
+                "presetDays": attempt_validity["presetDays"],
+                "activationAt": attempt_time,
+                "expiresAt": attempt_validity["expiresAt"],
+                "lifetime": attempt_validity["lifetime"],
+                "storedStatus": "active",
+                "createdAt": attempt_time,
+                "updatedAt": attempt_time,
+                "createdBy": deepcopy(normalized_actor),
+                "reason": normalized_reason,
+                "endedAt": None,
+                "endReason": None,
+                "revokedBy": None,
+                "supersededByGrantId": None,
+                "supersededBy": None,
+                "creationOperationId": operation_id,
+                "schemaVersion": 1,
+            })
+
+            events = []
+            prior_update = None
+            if (
+                prior_grant is not None
+                and complimentary_grant_status(prior_grant, attempt_time) == "active"
+            ):
+                prior_update = deepcopy(prior_grant)
+                prior_update.update({
+                    "storedStatus": "superseded",
+                    "updatedAt": attempt_time,
+                    "endedAt": attempt_time,
+                    "endReason": "Superseded by a newer complimentary grant",
+                    "supersededByGrantId": grant_id,
+                    "supersededBy": deepcopy(normalized_actor),
+                })
+                prior_update = validate_complimentary_grant(prior_update)
+                superseded_event_id = _complimentary_audit_id(
+                    operation_id, "superseded", prior_update["id"],
+                )
+                events.append((superseded_event_id, {
+                    "eventId": superseded_event_id,
+                    "eventType": "superseded",
+                    "grantId": prior_update["id"],
+                    "targetUid": normalized_target["uid"],
+                    "actor": deepcopy(normalized_actor),
+                    "replacementGrantId": grant_id,
+                    "reason": "Superseded by a newer complimentary grant",
+                    "occurredAt": attempt_time,
+                    "operationId": operation_id,
+                    "schemaVersion": 1,
+                }))
+
+            granted_event_id = _complimentary_audit_id(
+                operation_id, "granted", grant_id,
+            )
+            events.append((granted_event_id, {
+                "eventId": granted_event_id,
+                "eventType": "granted",
+                "grantId": grant_id,
+                "targetUid": normalized_target["uid"],
+                "actor": deepcopy(normalized_actor),
+                "replacementGrantId": None,
+                "reason": normalized_reason,
+                "occurredAt": attempt_time,
+                "operationId": operation_id,
+                "schemaVersion": 1,
+            }))
+            pointer = validate_complimentary_pointer({
+                "targetUid": normalized_target["uid"],
+                "activeGrantId": grant_id,
+                "revision": pointer_revision + 1,
+                "updatedAt": attempt_time,
+                "schemaVersion": 1,
+            }, normalized_target["uid"])
+            entitlement = resolve_effective_entitlement(paid, grant, attempt_time)
+            response = {
+                "grant": complimentary_grant_public(
+                    grant, attempt_time, admin=True,
+                ),
+                **entitlement,
+                "duplicate": False,
+            }
+            operation_record = {
+                "actorUid": normalized_actor["uid"],
+                "operationType": "grant",
+                "idempotencyKeyHash": key_hash,
+                "payloadHash": payload_hash,
+                "status": "committed",
+                "targetUid": normalized_target["uid"],
+                "grantId": grant_id,
+                "responseSnapshot": deepcopy(response),
+                "createdAt": attempt_time,
+                "schemaVersion": 1,
+            }
+
+            # Every read above completes before the first staged write below.
+            if prior_update is not None:
+                active_transaction.set(prior_ref, prior_update)
+            active_transaction.create(grant_ref, grant)
+            active_transaction.set(pointer_ref, pointer)
+            for event_id, event in events:
+                active_transaction.create(
+                    self._ref("complimentary_audit", event_id), event,
+                )
+            active_transaction.create(operation_ref, operation_record)
+            return deepcopy(response)
+
+        return create(transaction)
+
+    def revoke_complimentary_grant(
+        self, *, actor, grant_id, reason, idempotency_key, clock,
+    ):
+        """Atomically revoke the currently selected effective grant."""
+        normalized_actor = _validate_actor(actor)
+        normalized_grant_id = normalize_grant_id(grant_id)
+        normalized_reason = normalize_reason(reason)
+        normalized_key = normalize_idempotency_key(idempotency_key)
+        operation_id = _complimentary_operation_id(
+            normalized_actor["uid"], "revoke", normalized_key,
+        )
+        key_hash = _complimentary_sha256(normalized_key)
+        payload_hash = _complimentary_payload_hash({
+            "grantId": normalized_grant_id, "reason": normalized_reason,
+        })
+        operation_ref = self._ref("complimentary_operations", operation_id)
+        grant_ref = self._ref("complimentary_grants", normalized_grant_id)
+        transaction = self.db.transaction()
+        attempts = {"count": 0}
+
+        @firestore.transactional
+        def revoke(active_transaction):
+            attempts["count"] += 1
+            if attempts["count"] > 1:
+                log_event(
+                    operation="revoke_transaction",
+                    result_code="retry",
+                    duplicate=False,
+                    actor_uid=normalized_actor["uid"],
+                    grant_id=normalized_grant_id,
+                    transition_type="transaction_retry",
+                )
+            operation = _raw_data(
+                operation_ref.get(transaction=active_transaction),
+            )
+            if operation is not None:
+                return _validate_operation_replay(
+                    operation,
+                    normalized_actor["uid"],
+                    "revoke",
+                    key_hash,
+                    payload_hash,
+                )
+
+            attempt_time = _required_utc_datetime(clock(), "revokedAt")
+            grant_snapshot = grant_ref.get(transaction=active_transaction)
+            grant = _grant_from_snapshot(grant_snapshot)
+            if grant is None:
+                raise BillingError(
+                    "grant_not_found", "Complimentary grant was not found", 404,
+                )
+            pointer_ref = self._ref("complimentary_users", grant["targetUid"])
+            subscription_ref = self._ref("subscriptions", grant["targetUid"])
+            pointer_value = _raw_data(
+                pointer_ref.get(transaction=active_transaction),
+            )
+            paid = _raw_data(
+                subscription_ref.get(transaction=active_transaction),
+            )
+
+            if pointer_value is None:
+                raise BillingError(
+                    "grant_state_conflict", "The grant is no longer active", 409,
+                )
+            pointer = validate_complimentary_pointer(
+                pointer_value, grant["targetUid"],
+            )
+            if (
+                pointer["activeGrantId"] != normalized_grant_id
+                or complimentary_grant_status(grant, attempt_time) != "active"
+            ):
+                raise BillingError(
+                    "grant_state_conflict", "The grant is no longer active", 409,
+                )
+            if paid is not None:
+                subscription_public(paid, attempt_time)
+
+            revoked = deepcopy(grant)
+            revoked.update({
+                "storedStatus": "revoked",
+                "updatedAt": attempt_time,
+                "endedAt": attempt_time,
+                "endReason": normalized_reason,
+                "revokedBy": deepcopy(normalized_actor),
+            })
+            revoked = validate_complimentary_grant(revoked)
+            updated_pointer = validate_complimentary_pointer({
+                "targetUid": grant["targetUid"],
+                "activeGrantId": None,
+                "revision": pointer["revision"] + 1,
+                "updatedAt": attempt_time,
+                "schemaVersion": 1,
+            }, grant["targetUid"])
+            entitlement = resolve_effective_entitlement(
+                paid, revoked, attempt_time,
+            )
+            response = {
+                "grant": complimentary_grant_public(
+                    revoked, attempt_time, admin=True,
+                ),
+                **entitlement,
+                "duplicate": False,
+            }
+            event_id = _complimentary_audit_id(
+                operation_id, "revoked", normalized_grant_id,
+            )
+            event = {
+                "eventId": event_id,
+                "eventType": "revoked",
+                "grantId": normalized_grant_id,
+                "targetUid": grant["targetUid"],
+                "actor": deepcopy(normalized_actor),
+                "replacementGrantId": None,
+                "reason": normalized_reason,
+                "occurredAt": attempt_time,
+                "operationId": operation_id,
+                "schemaVersion": 1,
+            }
+            operation_record = {
+                "actorUid": normalized_actor["uid"],
+                "operationType": "revoke",
+                "idempotencyKeyHash": key_hash,
+                "payloadHash": payload_hash,
+                "status": "committed",
+                "targetUid": grant["targetUid"],
+                "grantId": normalized_grant_id,
+                "responseSnapshot": deepcopy(response),
+                "createdAt": attempt_time,
+                "schemaVersion": 1,
+            }
+
+            active_transaction.set(grant_ref, revoked)
+            active_transaction.set(pointer_ref, updated_pointer)
+            active_transaction.create(
+                self._ref("complimentary_audit", event_id), event,
+            )
+            active_transaction.create(operation_ref, operation_record)
+            return deepcopy(response)
+
+        return revoke(transaction)
+
+    def list_complimentary_grants(
+        self, *, filters, limit, as_of, last_scanned=None,
+    ):
+        """Scan deterministically, computing status at one fixed UTC as-of."""
+        evaluation_time = _required_utc_datetime(
+            as_of, "asOf", consistency=True,
+        )
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise BillingError(
+                "invalid_limit", "limit must be an integer from 1 to 100",
+                details={"field": "limit"},
+            )
+        if not isinstance(filters, dict) or set(filters) != {
+            "email", "planId", "status",
+        }:
+            raise BillingError("invalid_filter", "Grant filters are invalid")
+        email = (
+            normalize_email(filters["email"])
+            if filters["email"] not in (None, "") else None
+        )
+        selected_plan = (
+            normalize_plan_selector(filters["planId"])
+            if filters["planId"] not in (None, "") else None
+        )
+        selected_status = filters["status"]
+        if selected_status not in (None, *_GRANT_LIST_STATUSES):
+            raise BillingError(
+                "invalid_filter", "status filter is invalid",
+                details={"field": "status"},
+            )
+
+        query = self.db.collection(COLLECTIONS["complimentary_grants"])
+        if email is not None:
+            query = query.where("targetEmailNormalized", "==", email)
+        if selected_plan is not None:
+            query = query.where("planId", "==", selected_plan)
+        query = query.order_by(
+            "createdAt", direction=firestore.Query.DESCENDING,
+        ).order_by("__name__", direction=firestore.Query.DESCENDING)
+
+        marker_snapshot = None
+        if last_scanned is not None:
+            if not isinstance(last_scanned, dict) or set(last_scanned) != {
+                "createdAt", "grantId",
+            }:
+                raise _domain_error()
+            marker_time = _required_utc_datetime(
+                last_scanned.get("createdAt"),
+                "lastScanned.createdAt",
+                consistency=True,
+            )
+            try:
+                marker_id = normalize_grant_id(last_scanned.get("grantId"))
+            except BillingError as error:
+                raise _domain_error() from error
+            marker_snapshot = self._ref(
+                "complimentary_grants", marker_id,
+            ).get()
+            marker_grant = _grant_from_snapshot(marker_snapshot)
+            if marker_grant is None or marker_grant["createdAt"] != marker_time:
+                raise _domain_error()
+
+        returned = []
+        scanned = 0
+        final_scanned = None
+        has_more = False
+        while scanned < _LIST_MAX_INTERNAL_SCAN:
+            page_query = query
+            if marker_snapshot is not None:
+                page_query = page_query.start_after(marker_snapshot)
+            remaining_budget = _LIST_MAX_INTERNAL_SCAN - scanned
+            batch_size = min(_LIST_SCAN_BATCH, remaining_budget)
+            raw_batch = list(page_query.limit(batch_size + 1).stream())
+            batch = raw_batch[:batch_size]
+            raw_more = len(raw_batch) > batch_size
+            if not batch:
+                break
+
+            reached_limit = False
+            for index, snapshot in enumerate(batch):
+                grant = _grant_from_snapshot(snapshot)
+                if grant is None:
+                    raise _domain_error()
+                scanned += 1
+                final_scanned = {
+                    "createdAt": grant["createdAt"], "grantId": grant["id"],
+                }
+                marker_snapshot = snapshot
+                if (
+                    selected_status is None
+                    or complimentary_grant_status(grant, evaluation_time)
+                    == selected_status
+                ):
+                    returned.append(grant)
+                if len(returned) == limit:
+                    has_more = index + 1 < len(batch) or raw_more
+                    reached_limit = True
+                    break
+            if reached_limit:
+                break
+            if not raw_more:
+                break
+            if scanned >= _LIST_MAX_INTERNAL_SCAN:
+                has_more = True
+                break
+
+        return {
+            "grants": deepcopy(returned),
+            "hasMore": has_more,
+            "lastScanned": deepcopy(final_scanned) if has_more else None,
+        }
 
     def require_persisted_plans(self):
         self.persisted_plans_required = True
@@ -459,46 +1142,90 @@ class FirestoreBillingStore:
         return self.release_internal_order(uid, mapping["billingOrderId"], now, reason)
 
     def activate_payment(self, order, provider_payment, now):
+        evaluation_time = _required_utc_datetime(
+            now, "evaluationTime", consistency=True,
+        )
         order_ref = self._ref("orders", order["id"])
         payment_ref = self._ref("payments", provider_payment["id"])
         subscription_ref = self._ref("subscriptions", order["userId"])
+        pointer_ref = self._ref("complimentary_users", order["userId"])
         transaction = self.db.transaction()
+        attempts = {"count": 0}
+
+        def load_paid_and_grant(active_transaction):
+            paid = _raw_data(subscription_ref.get(transaction=active_transaction))
+            pointer_value = _raw_data(pointer_ref.get(transaction=active_transaction))
+            grant = None
+            if pointer_value is not None:
+                pointer = validate_complimentary_pointer(
+                    pointer_value, order["userId"],
+                )
+                if pointer["activeGrantId"] is not None:
+                    grant_snapshot = self._ref(
+                        "complimentary_grants", pointer["activeGrantId"],
+                    ).get(transaction=active_transaction)
+                    grant = _grant_from_snapshot(grant_snapshot)
+                    if (
+                        grant is None
+                        or grant["targetUid"] != order["userId"]
+                        or grant["storedStatus"] != "active"
+                    ):
+                        raise _domain_error()
+            return paid, grant
 
         @firestore.transactional
-        def activate(transaction):
-            existing = _data(payment_ref.get(transaction=transaction))
+        def activate(active_transaction):
+            attempts["count"] += 1
+            if attempts["count"] > 1:
+                plan_snapshot = order.get("planSnapshot") or {}
+                log_event(
+                    operation="payment_transaction",
+                    result_code="retry",
+                    duplicate=False,
+                    target_uid=order.get("userId"),
+                    plan_id=order.get("planId") or plan_snapshot.get("id"),
+                    transition_type="transaction_retry",
+                )
+            existing = _data(payment_ref.get(transaction=active_transaction))
             if existing:
                 if existing.get("providerOrderId") != order.get("providerOrderId"):
                     raise BillingError("payment_already_claimed", "This provider payment belongs to another order", 409)
-                subscription = _data(subscription_ref.get(transaction=transaction))
-                return existing, subscription, False
+                paid, grant = load_paid_and_grant(active_transaction)
+                entitlement = resolve_effective_entitlement(
+                    paid, grant, evaluation_time,
+                )
+                return existing, entitlement, False
 
-            current = _data(order_ref.get(transaction=transaction))
+            current = _data(order_ref.get(transaction=active_transaction))
             if not current or current.get("userId") != order.get("userId"):
                 raise BillingError("order_not_found", "Billing order was not found", 404)
             if current.get("status") == "paid":
                 raise BillingError("payment_state_conflict", "Paid order has no matching payment claim", 409)
             if current.get("status") not in ("reserved", "expired", "failed"):
                 raise BillingError("payment_state_conflict", "Billing order cannot accept a captured payment", 409)
-            late_capture = current.get("status") != "reserved" or current.get("reservationExpiresAt") <= now
+            late_capture = current.get("status") != "reserved" or current.get("reservationExpiresAt") <= evaluation_time
 
             code = current.get("couponCode")
+            coupon_ref = None
+            usage_ref = None
+            redemption_ref = None
+            coupon_update = None
+            usage_update = None
             if code:
                 coupon_ref = self._ref("coupons", code)
                 usage_ref = self._coupon_user_ref(current["userId"], code)
-                coupon = _data(coupon_ref.get(transaction=transaction))
-                usage = _data(usage_ref.get(transaction=transaction)) or {"usedCount": 0, "reservedCount": 0}
+                coupon = _data(coupon_ref.get(transaction=active_transaction))
+                usage = _data(usage_ref.get(transaction=active_transaction)) or {"usedCount": 0, "reservedCount": 0}
                 if not coupon:
                     raise BillingError("billing_data_inconsistent", "Coupon snapshot is unavailable", 503)
-                prior_subscription = _data(subscription_ref.get(transaction=transaction))
                 coupon_update = {
                     "usedCount": int(coupon.get("usedCount", 0)) + 1,
-                    "updatedAt": now,
+                    "updatedAt": evaluation_time,
                 }
                 usage_update = {
                     "userId": current["userId"], "couponCode": code,
                     "usedCount": int(usage.get("usedCount", 0)) + 1,
-                    "updatedAt": now,
+                    "updatedAt": evaluation_time,
                 }
                 if current.get("status") == "reserved":
                     coupon_update["reservedCount"] = max(0, int(coupon.get("reservedCount", 0)) - 1)
@@ -508,30 +1235,22 @@ class FirestoreBillingStore:
                         "activeReservationOrderId": None,
                         "activeReservationExpiresAt": None,
                     })
-                transaction.set(coupon_ref, coupon_update, merge=True)
-                transaction.set(usage_ref, usage_update, merge=True)
                 redemption_ref = self._ref("redemptions", current["id"])
-                transaction.set(redemption_ref, {
-                    "userId": current["userId"], "couponCode": code,
-                    "providerPaymentId": provider_payment["id"],
-                    "providerOrderId": current["providerOrderId"],
-                    "discountPaise": current["discountPaise"],
-                    "lateCapture": late_capture, "createdAt": now,
-                })
-            else:
-                prior_subscription = _data(subscription_ref.get(transaction=transaction))
 
+            prior_subscription, grant = load_paid_and_grant(active_transaction)
+            if prior_subscription is not None:
+                subscription_public(prior_subscription, evaluation_time)
             changing_plan = bool(
                 prior_subscription
                 and prior_subscription.get("expiresAt")
-                and prior_subscription["expiresAt"] > now
+                and prior_subscription["expiresAt"] > evaluation_time
                 and prior_subscription.get("planId") != current["planId"]
             )
-            starts = now
+            starts = evaluation_time
             if (
                 prior_subscription
                 and prior_subscription.get("expiresAt")
-                and prior_subscription["expiresAt"] > now
+                and prior_subscription["expiresAt"] > evaluation_time
                 and not changing_plan
             ):
                 starts = prior_subscription["expiresAt"]
@@ -550,22 +1269,36 @@ class FirestoreBillingStore:
                 "couponCode": code, "couponSnapshot": current.get("couponSnapshot"),
                 "lateCapture": late_capture,
                 "planChangeImmediate": changing_plan,
-                "createdAt": now, "verifiedAt": now,
+                "createdAt": evaluation_time, "verifiedAt": evaluation_time,
                 "subscriptionStartsAt": starts, "subscriptionExpiresAt": expires,
             }
             subscription = {
                 "userId": current["userId"], "status": "active", "planId": current["planId"],
                 "entitlementTier": current["planSnapshot"].get("entitlementTier", current["planId"]),
-                "startsAt": starts, "expiresAt": expires, "updatedAt": now,
+                "startsAt": starts, "expiresAt": expires, "updatedAt": evaluation_time,
                 "lastPaymentId": provider_payment["id"],
                 "paymentCount": int((prior_subscription or {}).get("paymentCount", 0)) + 1,
             }
-            transaction.set(payment_ref, payment)
-            transaction.set(subscription_ref, subscription)
-            transaction.set(order_ref, {
-                "status": "paid", "providerPaymentId": provider_payment["id"], "updatedAt": now,
+
+            if code:
+                active_transaction.set(coupon_ref, coupon_update, merge=True)
+                active_transaction.set(usage_ref, usage_update, merge=True)
+                active_transaction.set(redemption_ref, {
+                    "userId": current["userId"], "couponCode": code,
+                    "providerPaymentId": provider_payment["id"],
+                    "providerOrderId": current["providerOrderId"],
+                    "discountPaise": current["discountPaise"],
+                    "lateCapture": late_capture, "createdAt": evaluation_time,
+                })
+            active_transaction.set(payment_ref, payment)
+            active_transaction.set(subscription_ref, subscription)
+            active_transaction.set(order_ref, {
+                "status": "paid", "providerPaymentId": provider_payment["id"], "updatedAt": evaluation_time,
             }, merge=True)
-            return {"id": provider_payment["id"], **payment}, subscription, True
+            entitlement = resolve_effective_entitlement(
+                subscription, grant, evaluation_time,
+            )
+            return {"id": provider_payment["id"], **payment}, entitlement, True
 
         return activate(transaction)
 
