@@ -196,7 +196,7 @@ test('Property 1 activation uses one verified digest-versioned same-origin URL a
       certificateSha256: Array(32).fill('CC').join(':'),
     },
   }
-  const expectedUrl = `https://app.invalid${APK_PATH}?v=${descriptor.sha256}`
+  const expectedUrl = `https://app.invalid${APK_PATH}?v=${descriptor.sha256}&download=1`
 
   assert.equal(ANDROID_APK_PATH, APK_PATH)
   assert.equal(ANDROID_APK_FILENAME, APK_FILENAME)

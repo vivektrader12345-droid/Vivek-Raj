@@ -27,7 +27,6 @@ const DEFAULT_CONNECT_TIMEOUT_MS = 5_000
 const DEFAULT_BODY_TIMEOUT_MS = 30_000
 const MISSING_DOWNLOAD_PATHS = Object.freeze([
   '/downloads/release-verifier-intentionally-absent.apk',
-  '/downloads/Vivek-Marco-Trader.apk',
 ])
 
 export class ApkReleaseVerificationError extends Error {
@@ -291,11 +290,12 @@ async function verifyDescriptor(config) {
 }
 
 function versionedApkUrl(config, descriptor) {
-  return requestUrl(config.origin, descriptor.path, `?v=${descriptor.sha256}`)
+  return requestUrl(config.origin, descriptor.path, `?v=${descriptor.sha256}&download=1`)
 }
 
 async function verifyRange(config, descriptor, { start, end, expectedBytes, label }) {
   const url = versionedApkUrl(config, descriptor)
+  url.searchParams.set('probe', label === 'APK_PREFIX_RANGE' ? 'prefix' : 'tail')
   return boundedRequest(config, url, {
     headers: { Range: `bytes=${start}-${end}` },
     method: 'GET',

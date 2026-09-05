@@ -308,10 +308,13 @@ export async function checkAndroidApkAvailability(options = {}) {
 
     const apkUrl = new URL(derived.url)
     apkUrl.searchParams.set('v', descriptor.sha256)
+    apkUrl.searchParams.set('download', '1')
 
+    const prefixUrl = new URL(apkUrl)
+    prefixUrl.searchParams.set('probe', 'prefix')
     const prefix = await fetchExactRange({
       fetchLike,
-      url: apkUrl,
+      url: prefixUrl,
       range: 'bytes=0-3',
       expectedLength: 4,
       expectedContentRange: `bytes 0-3/${descriptor.byteSize}`,
@@ -322,9 +325,11 @@ export async function checkAndroidApkAvailability(options = {}) {
     if (!APK_PREFIX.every((value, index) => prefix[index] === value)) fail(REASON.WRONG_CONTENT)
 
     const finalOffset = descriptor.byteSize - 1
+    const tailUrl = new URL(apkUrl)
+    tailUrl.searchParams.set('probe', 'tail')
     await fetchExactRange({
       fetchLike,
-      url: apkUrl,
+      url: tailUrl,
       range: `bytes=${finalOffset}-${finalOffset}`,
       expectedLength: 1,
       expectedContentRange: `bytes ${finalOffset}-${finalOffset}/${descriptor.byteSize}`,
@@ -362,6 +367,7 @@ function expectedVersionedUrl(descriptor, applicationOrigin) {
   const derived = deriveAndroidApkUrl(descriptor, applicationOrigin)
   const url = new URL(derived.url)
   url.searchParams.set('v', derived.descriptor.sha256)
+  url.searchParams.set('download', '1')
   return { descriptor: derived.descriptor, url }
 }
 
