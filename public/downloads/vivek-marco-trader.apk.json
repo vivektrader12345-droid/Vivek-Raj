@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 2,
+  "path": "/downloads/vivek-marco-trader.apk",
+  "filename": "vivek-marco-trader.apk",
+  "mediaType": "application/vnd.android.package-archive",
+  "applicationId": "com.vivekmarco.trader",
+  "versionCode": 3,
+  "versionName": "1.0.2",
+  "sourceRevision": "a354ae432ed8139e501b57ef1e0fd1c93ee51b91",
+  "byteSize": 5261539,
+  "sha256": "0289447d05d13138d512c5419db12e3ceb09db2e31a2a9454d957255c20be70c",
+  "signer": {
+    "classification": "approved-release",
+    "certificateSha256": "5E:15:FD:1B:BA:A7:C3:AE:CC:BF:67:71:0F:DC:E2:E1:45:CE:B7:01:A8:62:A6:EB:ED:E2:FA:3A:F4:9F:1B:5E"
+  }
+}

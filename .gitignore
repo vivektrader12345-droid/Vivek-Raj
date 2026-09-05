@@ -37,8 +37,9 @@ dist-ssr
 /android/**/reports/
 /test-results/android/
 
-# Public Android release asset remains trackable
+# Public Android release assets remain trackable
 !/public/downloads/vivek-marco-trader.apk
+!/public/downloads/vivek-marco-trader.apk.json
 
 # Editor
 .vscode/*

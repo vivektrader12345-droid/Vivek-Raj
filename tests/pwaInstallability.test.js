@@ -8,6 +8,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const releaseDescriptor = JSON.parse(await readFile(path.join(root, 'public', 'downloads', 'vivek-marco-trader.apk.json'), 'utf8'))
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 
 async function getFreePort() {
@@ -156,10 +157,45 @@ test('Chromium reports an active service worker and no installability errors', {
     await client.send('Page.enable')
     await client.send('Runtime.enable')
     await client.send('Page.addScriptToEvaluateOnNewDocument', {
-      source: "window.__pwaInstallPromptObserved = false; addEventListener('beforeinstallprompt', () => { window.__pwaInstallPromptObserved = true })",
+      source: `(() => {
+        window.__pwaInstallPromptObserved = false
+        addEventListener('beforeinstallprompt', () => { window.__pwaInstallPromptObserved = true })
+        const descriptor = ${JSON.stringify(releaseDescriptor)}
+        const nativeFetch = window.fetch.bind(window)
+        const response = (body, status, url, headers) => {
+          const payload = body instanceof Uint8Array ? body : new TextEncoder().encode(String(body))
+          return {
+            status,
+            url,
+            redirected: false,
+            headers: new Headers(headers),
+            body: new Response(payload).body,
+            arrayBuffer: async () => payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength),
+          }
+        }
+        window.fetch = async (input, options = {}) => {
+          const url = new URL(typeof input === 'string' ? input : input.url, location.href)
+          if (url.pathname === descriptor.path + '.json') {
+            return response(JSON.stringify(descriptor), 200, url.href, { 'content-type': 'application/json' })
+          }
+          if (url.pathname === descriptor.path && options.headers?.Range) {
+            const prefix = options.headers.Range === 'bytes=0-3'
+            const offset = descriptor.byteSize - 1
+            return response(prefix ? new Uint8Array([80, 75, 3, 4]) : new Uint8Array([0]), 206, url.href, {
+              'content-type': descriptor.mediaType,
+              'content-disposition': 'attachment; filename="' + descriptor.filename + '"',
+              'content-range': prefix ? 'bytes 0-3/' + descriptor.byteSize : 'bytes ' + offset + '-' + offset + '/' + descriptor.byteSize,
+              'content-length': prefix ? '4' : '1',
+            })
+          }
+          return nativeFetch(input, options)
+        }
+      })()`,
     })
     await client.send('Page.navigate', { url: `http://127.0.0.1:${previewPort}/` })
     await waitFor(client, "document.readyState === 'complete'")
+    await waitFor(client, "Boolean(document.querySelector('[data-public-menu-trigger]'))")
+    await client.evaluate("document.querySelector('[data-public-menu-trigger]').click()")
     await waitFor(client, "Boolean(document.querySelector('[data-pwa-install]'))")
     const installControl = await client.evaluate(`(async () => {
       const button = document.querySelector('[data-pwa-install]')
