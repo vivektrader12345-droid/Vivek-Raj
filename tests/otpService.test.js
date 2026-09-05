@@ -60,3 +60,12 @@ test('OTP transport preserves bounded integer retry guidance and existing succes
     retryAfter: MAX_SAFE_RETRY_AFTER,
   })
 })
+
+test('OTP transport preserves only an authenticated boolean OTP decision', () => {
+  assert.equal(normalizeOtpResponse({ success: true, otpRequired: false }, true).otpRequired, false)
+  for (const value of ['false', null, 0, undefined]) {
+    const normalized = normalizeOtpResponse({ success: true, otpRequired: value }, true)
+    assert.equal('otpRequired' in normalized, false)
+  }
+  assert.equal('otpRequired' in normalizeOtpResponse({ success: true, otpRequired: false }, false), false)
+})

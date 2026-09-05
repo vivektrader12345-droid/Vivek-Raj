@@ -33,9 +33,16 @@ async function otpRequest(path, payload) {
   }
 }
 
-/** Request a server-generated OTP for the currently authenticated Firebase user. */
-export async function sendOTP(email) {
-  return otpRequest('/api/auth/otp/send', { email: email.trim().toLowerCase() })
+/** Request a server-authorized login decision or a generated OTP. */
+export async function sendOTP(email, options = {}) {
+  const result = await otpRequest('/api/auth/otp/send', {
+    email: email.trim().toLowerCase(),
+    ...(options.passwordLogin === true ? { intent: 'password_login' } : {}),
+  })
+  if (result.success && result.refreshToken && auth.currentUser) {
+    await auth.currentUser.getIdToken(true)
+  }
+  return result
 }
 
 /** Verify an OTP on the server and refresh the Firebase token containing its proof. */

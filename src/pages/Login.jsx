@@ -43,9 +43,12 @@ function Login() {
       await verifyCredentials(email.trim().toLowerCase(), password)
       setLoading(false)
       setOtpLoading(true)
-      const otpResult = await sendOTP(email.trim().toLowerCase())
+      const otpResult = await sendOTP(email.trim().toLowerCase(), { passwordLogin: true })
       setOtpLoading(false)
-      if (otpResult.success) {
+      if (otpResult.success && otpResult.otpRequired === false) {
+        await completeLogin()
+        navigate('/subscription')
+      } else if (otpResult.success) {
         setShowOTPScreen(true)
       } else {
         setError('Failed to send OTP: ' + otpResult.message)

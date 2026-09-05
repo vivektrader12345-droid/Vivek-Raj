@@ -18,6 +18,9 @@ export function normalizeOtpResponse(result, responseOk) {
     message: result.message || (responseOk ? 'Request completed' : 'OTP request failed'),
     refreshToken: result.refreshToken === true,
   }
+  if (typeof result.otpRequired === 'boolean' && normalized.success) {
+    normalized.otpRequired = result.otpRequired
+  }
   if (SAFE_DIAGNOSTIC_CODES.has(result.diagnosticCode)) {
     normalized.diagnosticCode = result.diagnosticCode
   }

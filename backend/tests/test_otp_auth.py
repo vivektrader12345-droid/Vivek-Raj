@@ -1,3 +1,4 @@
+import hashlib
 import os
 import unittest
 from unittest.mock import Mock, patch
@@ -189,6 +190,46 @@ class OtpAuthenticationTests(unittest.TestCase):
         send_email.assert_called_once_with("person@example.invalid", "123456")
         verify_token.assert_called_once_with(
             "synthetic-token", app=self.firebase_app, check_revoked=True
+        )
+
+    @patch("otp_auth._send_emailjs_otp")
+    @patch("otp_auth.firebase_auth.set_custom_user_claims")
+    @patch("otp_auth.firebase_auth.get_user")
+    @patch("otp_auth.firebase_auth.verify_id_token")
+    def test_fresh_exact_password_login_exemption_grants_session_proof(
+        self, verify_token, get_user, set_claims, send_email
+    ):
+        exempt_email = "exempt@example.invalid"
+        verify_token.return_value = {
+            **self.decoded,
+            "email": exempt_email,
+            "auth_time": 100,
+        }
+        get_user.return_value = Mock(
+            email=exempt_email,
+            custom_claims={"existing": True},
+        )
+        exempt_digest = hashlib.sha256(exempt_email.encode("utf-8")).hexdigest()
+
+        with (
+            patch("otp_auth.PASSWORD_LOGIN_OTP_EXEMPT_EMAIL_SHA256", exempt_digest),
+            patch("otp_auth.time.time", return_value=200),
+        ):
+            response = self.client.post(
+                "/api/auth/otp/send",
+                headers=self.headers,
+                json={"email": exempt_email, "intent": "password_login"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["otpRequired"], False)
+        self.assertEqual(response.get_json()["refreshToken"], True)
+        self.assertEqual(self.database.store, {})
+        send_email.assert_not_called()
+        set_claims.assert_called_once_with(
+            "user-1",
+            {"existing": True, "otp_auth_time": 100},
+            app=self.firebase_app,
         )
 
     @patch("otp_auth.firebase_auth.set_custom_user_claims")

@@ -19,6 +19,12 @@ from flask import Blueprint, jsonify, request
 OTP_EXPIRY_SECONDS = 5 * 60
 OTP_RESEND_SECONDS = 60
 OTP_MAX_ATTEMPTS = 5
+PASSWORD_LOGIN_INTENT = "password_login"
+PASSWORD_LOGIN_MAX_AGE_SECONDS = 5 * 60
+PASSWORD_LOGIN_FUTURE_SKEW_SECONDS = 30
+PASSWORD_LOGIN_OTP_EXEMPT_EMAIL_SHA256 = (
+    "cb755cdf16b3b7329beedc789bc84ae04e6063f95c042968c9e77e0f7e394bf6"
+)
 EMAILJS_ENDPOINT = "https://api.emailjs.com/api/v1.0/email/send"
 EMAILJS_TIMEOUT = (5, 10)
 MAX_SAFE_RETRY_AFTER = 60 * 60
@@ -349,6 +355,32 @@ def _delivery_error(failure: EmailDeliveryFailure):
     return response
 
 
+def _password_login_exemption_matches(
+    decoded: Dict[str, Any], email: str, auth_time: int, now: int
+) -> bool:
+    provider = decoded.get("firebase")
+    sign_in_provider = provider.get("sign_in_provider") if isinstance(provider, dict) else None
+    age = now - auth_time
+    email_digest = hashlib.sha256(email.encode("utf-8")).hexdigest()
+    return (
+        sign_in_provider == "password"
+        and -PASSWORD_LOGIN_FUTURE_SKEW_SECONDS <= age <= PASSWORD_LOGIN_MAX_AGE_SECONDS
+        and hmac.compare_digest(email_digest, PASSWORD_LOGIN_OTP_EXEMPT_EMAIL_SHA256)
+    )
+
+
+def _grant_password_login_exemption(
+    uid: str, email: str, auth_time: int, firebase_app
+) -> None:
+    user_record = firebase_auth.get_user(uid, app=firebase_app)
+    current_email = str(getattr(user_record, "email", "") or "").strip().lower()
+    if current_email != email:
+        raise ValueError("firebase-user-email-mismatch")
+    claims = dict(user_record.custom_claims or {})
+    claims["otp_auth_time"] = auth_time
+    firebase_auth.set_custom_user_claims(uid, claims, app=firebase_app)
+
+
 def create_otp_blueprint(db, firebase_app=None) -> Blueprint:
     blueprint = Blueprint("otp_auth", __name__)
 
@@ -357,6 +389,33 @@ def create_otp_blueprint(db, firebase_app=None) -> Blueprint:
         decoded, auth_error = _authenticate(firebase_app)
         if auth_error:
             return auth_error
+        uid = str(decoded.get("uid") or decoded.get("sub"))
+        email = str(decoded["email"]).strip().lower()
+        auth_time = _safe_int(decoded.get("auth_time"))
+        if auth_time <= 0:
+            return _error("Invalid token", 401)
+        body = request.get_json(silent=True) or {}
+        requested_email = str(body.get("email", email)).strip().lower()
+        if requested_email != email:
+            return _error("Email does not match authenticated user", 403)
+
+        now = int(time.time())
+        if (
+            body.get("intent") == PASSWORD_LOGIN_INTENT
+            and _password_login_exemption_matches(decoded, email, auth_time, now)
+        ):
+            try:
+                _grant_password_login_exemption(uid, email, auth_time, firebase_app)
+            except Exception as error:
+                _log_safe_failure("otp_password_exemption_grant_failed", error)
+                return _error("Unable to complete login. Please try again.", 503)
+            return jsonify({
+                "success": True,
+                "message": "Login authorization completed",
+                "otpRequired": False,
+                "refreshToken": True,
+            })
+
         if db is None:
             return _error(
                 "OTP service unavailable", 503, "otp_storage_client_unavailable"
@@ -366,18 +425,7 @@ def create_otp_blueprint(db, firebase_app=None) -> Blueprint:
         if len(secret) < 32:
             return _error("OTP service unavailable", 503, "otp_hmac_unavailable")
 
-        uid = str(decoded.get("uid") or decoded.get("sub"))
-        email = str(decoded["email"]).strip().lower()
-        auth_time = int(decoded.get("auth_time") or 0)
-        if auth_time <= 0:
-            return _error("Invalid token", 401)
-        body = request.get_json(silent=True) or {}
-        requested_email = str(body.get("email", email)).strip().lower()
-        if requested_email != email:
-            return _error("Email does not match authenticated user", 403)
-
         challenge_ref = db.collection("otp_challenges").document(uid)
-        now = int(time.time())
         code = f"{secrets.randbelow(900000) + 100000:06d}"
         nonce = secrets.token_urlsafe(16)
         challenge_id = secrets.token_hex(16)
