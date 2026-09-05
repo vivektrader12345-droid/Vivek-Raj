@@ -168,7 +168,7 @@ test('host rules derive exact release headers while non-forced download misses p
     force: false,
     from: '/downloads/*',
     status: 404,
-    to: '/404.html',
+    to: '/download-not-found.txt',
   })
 
   const publicRules = redirectsFileRules(redirectsSource)
@@ -181,7 +181,7 @@ test('host rules derive exact release headers while non-forced download misses p
     force: false,
     from: '/downloads/*',
     status: 404,
-    to: '/404.html',
+    to: '/download-not-found.txt',
   })
 
   assert.deepEqual(

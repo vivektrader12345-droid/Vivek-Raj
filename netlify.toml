@@ -43,9 +43,16 @@
     Content-Type = "application/json; charset=utf-8"
     X-Content-Type-Options = "nosniff"
 
+[[headers]]
+  for = "/download-not-found.txt"
+  [headers.values]
+    Cache-Control = "no-store"
+    Content-Type = "text/plain; charset=utf-8"
+    X-Content-Type-Options = "nosniff"
+
 [[redirects]]
   from = "/downloads/*"
-  to = "/404.html"
+  to = "/download-not-found.txt"
   status = 404
   force = false
 
