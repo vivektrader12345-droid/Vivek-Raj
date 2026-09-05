@@ -45,6 +45,7 @@ class EmailDeliveryFailure(Exception):
     retryable: bool
     retry_after: Optional[int]
     exception_class: str
+    provider_status: Optional[int] = None
 
 
 def _error(message: str, status: int, diagnostic_code: Optional[str] = None):
@@ -60,13 +61,19 @@ def _log_safe_failure(event: str, error: Exception) -> None:
 
 
 def _log_email_failure(failure: EmailDeliveryFailure) -> None:
+    provider_status = (
+        str(failure.provider_status)
+        if failure.provider_status is not None
+        else "none"
+    )
     print(
-        "[WARN] %s category=%s exception=%s retryable=%s"
+        "[WARN] %s category=%s exception=%s retryable=%s provider_status=%s"
         % (
             failure.diagnostic_code,
             failure.category,
             failure.exception_class,
             str(failure.retryable).lower(),
+            provider_status,
         ),
         flush=True,
     )
@@ -131,13 +138,20 @@ def _delivery_failure(
     retryable: bool = False,
     retry_after: Optional[int] = None,
     error: Optional[Exception] = None,
+    provider_status: Optional[int] = None,
 ) -> EmailDeliveryFailure:
+    safe_provider_status = (
+        provider_status
+        if isinstance(provider_status, int) and 100 <= provider_status <= 599
+        else None
+    )
     return EmailDeliveryFailure(
         category=category,
         diagnostic_code=f"otp_email_{category}",
         retryable=retryable,
         retry_after=retry_after,
         exception_class=_safe_exception_class(error),
+        provider_status=safe_provider_status,
     )
 
 
@@ -211,7 +225,10 @@ def _classify_emailjs_response(response: Any) -> EmailDeliveryFailure:
         return _delivery_failure("request_contract")
     if status == 422:
         return _delivery_failure("recipient")
-    return _delivery_failure("operation_failed")
+    return _delivery_failure(
+        "operation_failed",
+        provider_status=status,
+    )
 
 
 def _send_emailjs_otp(email: str, code: str) -> None:
@@ -308,11 +325,17 @@ def _legacy_challenge_is_structurally_valid(challenge: Dict[str, Any], uid: str)
 
 
 def _delivery_error(failure: EmailDeliveryFailure):
+    provider_status_guidance = (
+        f" Provider status: {failure.provider_status}."
+        if failure.provider_status is not None
+        else ""
+    )
     payload = {
         "success": False,
         "message": (
             "Unable to send OTP. Please try again later. "
-            f"Support code: {failure.diagnostic_code}"
+            f"Support code: {failure.diagnostic_code}."
+            f"{provider_status_guidance}"
         ),
         "diagnosticCode": failure.diagnostic_code,
     }

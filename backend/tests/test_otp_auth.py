@@ -307,6 +307,33 @@ class OtpAuthenticationTests(unittest.TestCase):
 
     @patch("otp_auth._send_emailjs_otp")
     @patch("otp_auth.firebase_auth.verify_id_token")
+    def test_unknown_provider_status_is_bounded_and_user_visible(
+        self, verify_token, send_email
+    ):
+        verify_token.return_value = self.decoded
+        send_email.side_effect = EmailDeliveryFailure(
+            "operation_failed",
+            "otp_email_operation_failed",
+            False,
+            None,
+            "HttpResponse",
+            418,
+        )
+
+        response = self.client.post(
+            "/api/auth/otp/send",
+            headers=self.headers,
+            json={"email": "person@example.invalid"},
+        )
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(payload["diagnosticCode"], "otp_email_operation_failed")
+        self.assertIn("Provider status: 418.", payload["message"])
+        self.assertNotIn(("otp_challenges", "user-1"), self.database.store)
+
+    @patch("otp_auth._send_emailjs_otp")
+    @patch("otp_auth.firebase_auth.verify_id_token")
     def test_acceptance_cannot_activate_a_newer_challenge(
         self, verify_token, send_email
     ):
@@ -524,6 +551,10 @@ class EmailJsAdapterTests(unittest.TestCase):
                 ):
                     _send_emailjs_otp("recipient@example.invalid", "654321")
                 self.assertEqual(raised.exception.diagnostic_code, expected)
+                self.assertEqual(
+                    raised.exception.provider_status,
+                    status if status == 418 else None,
+                )
                 self.assertNotIn(provider_canary, repr(raised.exception))
                 if status == 429:
                     self.assertEqual(raised.exception.retry_after, 17)
