@@ -143,16 +143,17 @@ function Layout() {
             )
           })}
           {download.phase === APK_DOWNLOAD_UI_PHASES.AVAILABLE && (
-            <button
-              type="button"
+            <a
               data-pwa-install
-              onClick={() => { void handleDownload() }}
+              href={download.manualUrl}
+              download="vivek-marco-trader.apk"
+              onClick={() => setSidebarOpen(false)}
               title={collapsed ? 'Download App' : undefined}
               className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-gray-400 transition-all duration-200 hover:bg-[#2a2a5a]/20 hover:text-white ${collapsed ? 'justify-center px-3' : ''}`}
             >
               <Download size={20} aria-hidden="true" />
               {!collapsed && <span className="text-sm font-medium">Download App</span>}
-            </button>
+            </a>
           )}
           {[APK_DOWNLOAD_UI_PHASES.IDLE, APK_DOWNLOAD_UI_PHASES.CHECKING, APK_DOWNLOAD_UI_PHASES.REQUESTING].includes(download.phase) && (
             <button

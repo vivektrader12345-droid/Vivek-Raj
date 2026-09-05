@@ -32,16 +32,17 @@ function PublicDownloadMenu() {
   const renderDownloadState = () => {
     if (download.phase === APK_DOWNLOAD_UI_PHASES.AVAILABLE) {
       return (
-        <button
-          type="button"
+        <a
           role="menuitem"
           data-pwa-install
-          onClick={() => { void download.requestDownload() }}
+          href={download.manualUrl}
+          download="vivek-marco-trader.apk"
+          onClick={() => setOpen(false)}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium text-gray-200 transition-colors hover:bg-[#2a2a5a]/60 hover:text-white"
         >
           <Download size={19} aria-hidden="true" />
           <span>Download App</span>
-        </button>
+        </a>
       )
     }
 
