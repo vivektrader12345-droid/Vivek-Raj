@@ -1,11 +1,16 @@
-const CACHE_VERSION = 'vmt-pwa-v2'
+const CACHE_VERSION = 'vmt-pwa-v3'
 const APP_SHELL_CACHE = `${CACHE_VERSION}-app-shell`
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const APP_SHELL = [
   '/index.html',
   '/manifest.json',
+  '/icons/favicon-48.png',
+  '/icons/apple-touch-icon.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/icon-maskable-192.png',
+  '/icons/icon-maskable-512.png',
+  '/icons/vmt-logo-source.jpg',
 ]
 
 function isPublicStaticAsset(url) {

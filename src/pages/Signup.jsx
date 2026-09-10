@@ -220,7 +220,13 @@ function Signup() {
       <div className="relative glass-card p-8 w-full max-w-md animate-fadeIn">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="text-6xl mb-3 animate-float">🐂</div>
+          <img
+            src="/icons/vmt-logo-source.jpg"
+            alt="Vivek Marco Trader"
+            width="112"
+            height="112"
+            className="mx-auto mb-3 h-28 w-28 rounded-full object-cover shadow-[0_0_32px_rgba(245,166,35,0.3)] animate-float"
+          />
           <h1 className="text-2xl font-bold gradient-text tracking-wide">Vivek Marco Trader</h1>
           <p className="text-gray-400 mt-2 text-sm">Start your Trading Journal</p>
         </div>

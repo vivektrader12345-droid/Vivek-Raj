@@ -14,8 +14,8 @@ export const requestNotificationPermission = async () => {
 export const sendNotification = (title, options = {}) => {
   if (Notification.permission === 'granted') {
     const notification = new Notification(title, {
-      icon: '/vite.svg',
-      badge: '/vite.svg',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
       vibrate: [200, 100, 200],
       ...options
     })

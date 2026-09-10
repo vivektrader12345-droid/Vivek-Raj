@@ -112,17 +112,26 @@ test('production manifest and icons satisfy PWA metadata requirements', async ()
   assert.equal(manifest.start_url, '/')
   assert.equal(manifest.scope, '/')
   assert.equal(manifest.display, 'standalone')
-  assert.equal(manifest.theme_color, '#0a0a1f')
+  assert.equal(manifest.theme_color, '#000000')
 
   for (const size of [192, 512]) {
     const icon = await readFile(path.join(root, 'dist', 'icons', `icon-${size}.png`))
     assert.deepEqual(pngSize(icon), { width: size, height: size })
-    assert.ok(manifest.icons.some(entry => entry.sizes === `${size}x${size}` && entry.type === 'image/png'))
+    assert.ok(manifest.icons.some(entry => entry.sizes === `${size}x${size}` && entry.type === 'image/png' && entry.purpose === 'any'))
+    const maskable = await readFile(path.join(root, 'dist', 'icons', `icon-maskable-${size}.png`))
+    assert.deepEqual(pngSize(maskable), { width: size, height: size })
+    assert.ok(manifest.icons.some(entry => entry.src === `/icons/icon-maskable-${size}.png` && entry.purpose === 'maskable'))
   }
+
+  assert.deepEqual(pngSize(await readFile(path.join(root, 'dist', 'icons', 'favicon-48.png'))), { width: 48, height: 48 })
+  assert.deepEqual(pngSize(await readFile(path.join(root, 'dist', 'icons', 'apple-touch-icon.png'))), { width: 180, height: 180 })
 
   const html = await readFile(path.join(root, 'dist', 'index.html'), 'utf8')
   assert.match(html, /rel="manifest" href="\/manifest\.json"/)
-  assert.match(html, /name="theme-color" content="#0a0a1f"/)
+  assert.match(html, /rel="icon" type="image\/png" sizes="48x48" href="\/icons\/favicon-48\.png"/)
+  assert.match(html, /rel="apple-touch-icon" sizes="180x180" href="\/icons\/apple-touch-icon\.png"/)
+  assert.match(html, /name="theme-color" content="#000000"/)
+  assert.match(html, /property="og:image" content="https:\/\/vivektrader\.space\/icons\/icon-512\.png"/)
   await access(path.join(root, 'dist', 'sw.js'))
 })
 

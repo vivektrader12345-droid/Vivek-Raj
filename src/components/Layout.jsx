@@ -76,7 +76,13 @@ function Layout() {
         {/* Header */}
         <div className={`p-5 border-b border-[#2a2a5a]/30 ${collapsed ? 'px-3' : ''}`}>
           <div className="flex items-center gap-3">
-            <span className="text-3xl animate-float">🐂</span>
+            <img
+              src="/icons/vmt-logo-source.jpg"
+              alt="Vivek Marco Trader"
+              width="40"
+              height="40"
+              className="h-10 w-10 flex-none rounded-full object-cover shadow-[0_0_18px_rgba(245,166,35,0.25)]"
+            />
             {!collapsed && (
               <div>
                 <h1 className="text-lg font-bold gradient-text">Vivek Marco</h1>
