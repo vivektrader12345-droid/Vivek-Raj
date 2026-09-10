@@ -77,7 +77,7 @@ function Layout() {
         <div className={`p-5 border-b border-[#2a2a5a]/30 ${collapsed ? 'px-3' : ''}`}>
           <div className="flex items-center gap-3">
             <img
-              src="/icons/vmt-logo-source.jpg"
+              src="/icons/vmt-logo-gold-20260910.jpg"
               alt="Vivek Marco Trader"
               width="40"
               height="40"

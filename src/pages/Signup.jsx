@@ -221,7 +221,7 @@ function Signup() {
         {/* Logo */}
         <div className="text-center mb-8">
           <img
-            src="/icons/vmt-logo-source.jpg"
+            src="/icons/vmt-logo-gold-20260910.jpg"
             alt="Vivek Marco Trader"
             width="112"
             height="112"

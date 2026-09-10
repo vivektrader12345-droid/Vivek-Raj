@@ -32,11 +32,15 @@ const requiredAssets = new Map([
   ['icon-maskable-512.png', 512],
 ])
 
-await access(path.join(iconDirectory, 'vmt-logo-source.jpg'))
-const crawlerFavicon = await readFile(path.join(root, 'public', 'favicon-vmt-48.png'))
+const sourceLogo = await readFile(path.join(iconDirectory, 'vmt-logo-source.jpg'))
+const uiLogo = await readFile(path.join(iconDirectory, 'vmt-logo-gold-20260910.jpg'))
+if (!sourceLogo.equals(uiLogo)) {
+  throw new Error('Versioned UI logo must exactly match vmt-logo-source.jpg')
+}
+const crawlerFavicon = await readFile(path.join(root, 'public', 'favicon-vmt-gold-48.png'))
 const crawlerDimensions = pngDimensions(crawlerFavicon)
 if (crawlerDimensions.width !== 48 || crawlerDimensions.height !== 48) {
-  throw new Error('favicon-vmt-48.png must be 48x48')
+  throw new Error('favicon-vmt-gold-48.png must be 48x48')
 }
 validateIco(await readFile(path.join(root, 'public', 'favicon.ico')))
 for (const [name, expectedSize] of requiredAssets) {

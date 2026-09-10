@@ -85,6 +85,7 @@ function Save-IcoFromPng {
 
 try {
     $publicIcons = Join-Path $root 'public\icons'
+    [System.IO.File]::Copy($sourcePath, (Join-Path $publicIcons 'vmt-logo-gold-20260910.jpg'), $true)
     foreach ($definition in @(
         @{ Name = 'favicon-48.png'; Size = 48; Scale = 1.0 },
         @{ Name = 'apple-touch-icon.png'; Size = 180; Scale = 1.0 },
@@ -96,6 +97,7 @@ try {
         Save-BrandImage -Path (Join-Path $publicIcons $definition.Name) -Width $definition.Size -Height $definition.Size -Scale $definition.Scale
     }
     [System.IO.File]::Copy((Join-Path $publicIcons 'favicon-48.png'), (Join-Path $root 'public\favicon-vmt-48.png'), $true)
+    [System.IO.File]::Copy((Join-Path $publicIcons 'favicon-48.png'), (Join-Path $root 'public\favicon-vmt-gold-48.png'), $true)
     Save-IcoFromPng -PngPath (Join-Path $publicIcons 'favicon-48.png') -IcoPath (Join-Path $root 'public\favicon.ico') -Size 48
 
     $resources = Join-Path $root 'android\app\src\main\res'
