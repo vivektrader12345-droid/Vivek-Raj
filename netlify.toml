@@ -6,6 +6,12 @@
   VITE_WEBHOOK_API_URL = "https://vivek-raj.onrender.com"
 
 [[headers]]
+  for = "/favicon.ico"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Content-Type = "image/x-icon"
+
+[[headers]]
   for = "/sw.js"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"

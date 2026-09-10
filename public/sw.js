@@ -1,12 +1,14 @@
-const CACHE_VERSION = 'vmt-pwa-v3'
+const CACHE_VERSION = 'vmt-pwa-v4'
+const BRAND_VERSION = '20260910'
 const APP_SHELL_CACHE = `${CACHE_VERSION}-app-shell`
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const APP_SHELL = [
   '/index.html',
   '/manifest.json',
-  '/icons/favicon-48.png',
+  `/favicon.ico?v=${BRAND_VERSION}`,
+  `/icons/favicon-48.png?v=${BRAND_VERSION}`,
   '/icons/apple-touch-icon.png',
-  '/icons/icon-192.png',
+  `/icons/icon-192.png?v=${BRAND_VERSION}`,
   '/icons/icon-512.png',
   '/icons/icon-maskable-192.png',
   '/icons/icon-maskable-512.png',
@@ -16,6 +18,7 @@ const APP_SHELL = [
 function isPublicStaticAsset(url) {
   return url.pathname.startsWith('/assets/') ||
     url.pathname.startsWith('/icons/') ||
+    url.pathname === '/favicon.ico' ||
     url.pathname === '/manifest.json'
 }
 

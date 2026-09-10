@@ -54,6 +54,35 @@ function Save-BrandImage {
     }
 }
 
+function Save-IcoFromPng {
+    param(
+        [Parameter(Mandatory)] [string]$PngPath,
+        [Parameter(Mandatory)] [string]$IcoPath,
+        [Parameter(Mandatory)] [int]$Size
+    )
+
+    $pngBytes = [System.IO.File]::ReadAllBytes($PngPath)
+    $stream = [System.IO.File]::Open($IcoPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
+    $writer = [System.IO.BinaryWriter]::new($stream)
+    try {
+        $writer.Write([UInt16]0)
+        $writer.Write([UInt16]1)
+        $writer.Write([UInt16]1)
+        $writer.Write([byte]$Size)
+        $writer.Write([byte]$Size)
+        $writer.Write([byte]0)
+        $writer.Write([byte]0)
+        $writer.Write([UInt16]1)
+        $writer.Write([UInt16]32)
+        $writer.Write([UInt32]$pngBytes.Length)
+        $writer.Write([UInt32]22)
+        $writer.Write($pngBytes)
+    } finally {
+        $writer.Dispose()
+        $stream.Dispose()
+    }
+}
+
 try {
     $publicIcons = Join-Path $root 'public\icons'
     foreach ($definition in @(
@@ -66,6 +95,7 @@ try {
     )) {
         Save-BrandImage -Path (Join-Path $publicIcons $definition.Name) -Width $definition.Size -Height $definition.Size -Scale $definition.Scale
     }
+    Save-IcoFromPng -PngPath (Join-Path $publicIcons 'favicon-48.png') -IcoPath (Join-Path $root 'public\favicon.ico') -Size 48
 
     $resources = Join-Path $root 'android\app\src\main\res'
     $launcherSizes = [ordered]@{ mdpi = 48; hdpi = 72; xhdpi = 96; xxhdpi = 144; xxxhdpi = 192 }

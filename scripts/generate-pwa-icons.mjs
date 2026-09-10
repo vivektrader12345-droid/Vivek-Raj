@@ -13,6 +13,16 @@ function pngDimensions(bytes) {
   return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }
 }
 
+function validateIco(bytes) {
+  if (bytes.length < 30 || bytes.readUInt16LE(0) !== 0 || bytes.readUInt16LE(2) !== 1 || bytes.readUInt16LE(4) !== 1) {
+    throw new Error('favicon.ico must be a single-image ICO file')
+  }
+  if (bytes[6] !== 48 || bytes[7] !== 48 || bytes.readUInt32LE(18) !== 22) {
+    throw new Error('favicon.ico must contain the 48x48 brand icon')
+  }
+  pngDimensions(bytes.subarray(22))
+}
+
 const requiredAssets = new Map([
   ['favicon-48.png', 48],
   ['apple-touch-icon.png', 180],
@@ -23,6 +33,7 @@ const requiredAssets = new Map([
 ])
 
 await access(path.join(iconDirectory, 'vmt-logo-source.jpg'))
+validateIco(await readFile(path.join(root, 'public', 'favicon.ico')))
 for (const [name, expectedSize] of requiredAssets) {
   const bytes = await readFile(path.join(iconDirectory, name))
   const dimensions = pngDimensions(bytes)
