@@ -37,7 +37,7 @@ services:
       - key: CONNECT_EXCHANGE_ON_STARTUP
         value: "false"
       - key: USE_TESTNET
-        value: "true"
+        value: "false"
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET

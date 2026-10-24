@@ -26,7 +26,7 @@ function BinanceSync() {
   const { user } = useAuth()
   const [apiKey, setApiKey] = useState('')
   const [apiSecret, setApiSecret] = useState('')
-  const [testnet, setTestnet] = useState(true)
+  const [testnet, setTestnet] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [connected, setConnected] = useState(false)
