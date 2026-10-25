@@ -583,12 +583,17 @@ def execute_live_trade(user_id, trade_data):
 
 @app.route('/')
 def home():
+    # Safe debug info - only show first 12 chars of key ID for verification
+    razorpay_key = os.environ.get('RAZORPAY_KEY_ID', '')
+    key_preview = razorpay_key[:12] + '***' if len(razorpay_key) > 12 else 'NOT_SET'
+    
     return jsonify({
         'service': 'Vivek Marco Trader - Auto Trading Server',
         'status': 'running',
         'exchange_connected': exchange_registry.connected_count() > 0,
         'firebase_connected': db is not None,
         'testnet': USE_TESTNET,
+        'razorpay_key_preview': key_preview,  # Debug: verify which key is loaded
         'version': '2.0',
     })
 
